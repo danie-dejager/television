@@ -1,15 +1,9 @@
-use rustc_hash::FxHashMap;
-use std::{
-    fmt::{self, Display, Formatter},
-    ops::Deref,
-};
-
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
 use std::process::Stdio;
 
-use anyhow::Result;
-use regex::Regex;
+use preview::{parse_preview_kind, PreviewKind};
+use prototypes::{CableChannelPrototype, DEFAULT_DELIMITER};
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use tracing::debug;
 
@@ -19,12 +13,8 @@ use crate::matcher::Matcher;
 use crate::matcher::{config::Config, injector::Injector};
 use crate::utils::command::shell_command;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum PreviewKind {
-    Command(PreviewCommand),
-    Builtin(PreviewType),
-    None,
-}
+pub mod preview;
+pub mod prototypes;
 
 #[allow(dead_code)]
 pub struct Channel {
@@ -39,9 +29,10 @@ pub struct Channel {
 impl Default for Channel {
     fn default() -> Self {
         Self::new(
-            "Files",
+            "files",
             "find . -type f",
-            Some(PreviewCommand::new("bat -n --color=always {}", ":")),
+            false,
+            Some(PreviewCommand::new("cat {}", ":")),
         )
     }
 }
@@ -51,6 +42,7 @@ impl From<CableChannelPrototype> for Channel {
         Self::new(
             &prototype.name,
             &prototype.source_command,
+            prototype.interactive,
             match prototype.preview_command {
                 Some(command) => Some(PreviewCommand::new(
                     &command,
@@ -64,27 +56,18 @@ impl From<CableChannelPrototype> for Channel {
     }
 }
 
-pub fn parse_preview_kind(command: &PreviewCommand) -> Result<PreviewKind> {
-    debug!("Parsing preview kind for command: {:?}", command);
-    let re = Regex::new(r"^\:(\w+)\:$").unwrap();
-    if let Some(captures) = re.captures(&command.command) {
-        let preview_type = PreviewType::try_from(&captures[1])?;
-        Ok(PreviewKind::Builtin(preview_type))
-    } else {
-        Ok(PreviewKind::Command(command.clone()))
-    }
-}
-
 impl Channel {
     pub fn new(
         name: &str,
         entries_command: &str,
+        interactive: bool,
         preview_command: Option<PreviewCommand>,
     ) -> Self {
         let matcher = Matcher::new(Config::default());
         let injector = matcher.injector();
         let crawl_handle = tokio::spawn(load_candidates(
             entries_command.to_string(),
+            interactive,
             injector,
         ));
         let preview_kind = match preview_command {
@@ -108,9 +91,13 @@ impl Channel {
 }
 
 #[allow(clippy::unused_async)]
-async fn load_candidates(command: String, injector: Injector<String>) {
+async fn load_candidates(
+    command: String,
+    interactive: bool,
+    injector: Injector<String>,
+) {
     debug!("Loading candidates from command: {:?}", command);
-    let mut child = shell_command(false)
+    let mut child = shell_command(interactive)
         .arg(command)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -221,38 +208,5 @@ impl OnAir for Channel {
 
     fn supports_preview(&self) -> bool {
         self.preview_kind != PreviewKind::None
-    }
-}
-
-#[derive(Clone, Debug, serde::Deserialize, PartialEq)]
-pub struct CableChannelPrototype {
-    pub name: String,
-    pub source_command: String,
-    pub preview_command: Option<String>,
-    #[serde(default = "default_delimiter")]
-    pub preview_delimiter: Option<String>,
-}
-
-pub const DEFAULT_DELIMITER: &str = " ";
-
-#[allow(clippy::unnecessary_wraps)]
-fn default_delimiter() -> Option<String> {
-    Some(DEFAULT_DELIMITER.to_string())
-}
-
-impl Display for CableChannelPrototype {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
-#[derive(Debug, serde::Deserialize, Default)]
-pub struct CableChannels(pub FxHashMap<String, CableChannelPrototype>);
-
-impl Deref for CableChannels {
-    type Target = FxHashMap<String, CableChannelPrototype>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
