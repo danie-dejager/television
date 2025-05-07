@@ -4,7 +4,7 @@ use std::{
     ops::Deref,
 };
 
-use crate::cable::SerializedChannelPrototypes;
+use crate::{cable::CableSpec, channels::preview::PreviewCommand};
 
 /// A prototype for a cable channel.
 ///
@@ -35,10 +35,10 @@ use crate::cable::SerializedChannelPrototypes;
 /// [[cable_channel]]
 /// name = "files"
 /// source_command = "fd -t f"
-/// preview_command = ":files:"
+/// preview_command = "cat {}"
 /// ```
 #[derive(Clone, Debug, serde::Deserialize, PartialEq)]
-pub struct CableChannelPrototype {
+pub struct ChannelPrototype {
     pub name: String,
     pub source_command: String,
     #[serde(default)]
@@ -49,7 +49,10 @@ pub struct CableChannelPrototype {
     pub preview_offset: Option<String>,
 }
 
-impl CableChannelPrototype {
+const STDIN_CHANNEL_NAME: &str = "stdin";
+const STDIN_SOURCE_COMMAND: &str = "cat";
+
+impl ChannelPrototype {
     pub fn new(
         name: &str,
         source_command: &str,
@@ -67,23 +70,42 @@ impl CableChannelPrototype {
             preview_offset,
         }
     }
+
+    pub fn stdin(preview: Option<PreviewCommand>) -> Self {
+        match preview {
+            Some(PreviewCommand {
+                command,
+                delimiter,
+                offset_expr,
+            }) => Self {
+                name: STDIN_CHANNEL_NAME.to_string(),
+                source_command: STDIN_SOURCE_COMMAND.to_string(),
+                interactive: false,
+                preview_command: Some(command),
+                preview_delimiter: Some(delimiter),
+                preview_offset: offset_expr,
+            },
+            None => Self {
+                name: STDIN_CHANNEL_NAME.to_string(),
+                source_command: STDIN_SOURCE_COMMAND.to_string(),
+                interactive: false,
+                preview_command: None,
+                preview_delimiter: None,
+                preview_offset: None,
+            },
+        }
+    }
 }
 
 const DEFAULT_PROTOTYPE_NAME: &str = "files";
-const DEFAULT_SOURCE_COMMAND: &str = "fd -t f";
-const DEFAULT_PREVIEW_COMMAND: &str = ":files:";
 pub const DEFAULT_DELIMITER: &str = " ";
 
-impl Default for CableChannelPrototype {
+impl Default for ChannelPrototype {
     fn default() -> Self {
-        Self {
-            name: DEFAULT_PROTOTYPE_NAME.to_string(),
-            source_command: DEFAULT_SOURCE_COMMAND.to_string(),
-            interactive: false,
-            preview_command: Some(DEFAULT_PREVIEW_COMMAND.to_string()),
-            preview_delimiter: Some(DEFAULT_DELIMITER.to_string()),
-            preview_offset: None,
-        }
+        Cable::default()
+            .get(DEFAULT_PROTOTYPE_NAME)
+            .cloned()
+            .unwrap()
     }
 }
 
@@ -94,7 +116,7 @@ fn default_delimiter() -> Option<String> {
     Some(DEFAULT_DELIMITER.to_string())
 }
 
-impl Display for CableChannelPrototype {
+impl Display for ChannelPrototype {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
@@ -105,11 +127,11 @@ impl Display for CableChannelPrototype {
 /// This is used to store cable channel prototypes throughout the application
 /// in a way that facilitates answering questions like "what's the prototype
 /// for `files`?" or "does this channel exist?".
-#[derive(Debug, serde::Deserialize)]
-pub struct CableChannels(pub FxHashMap<String, CableChannelPrototype>);
+#[derive(Debug, serde::Deserialize, Clone)]
+pub struct Cable(pub FxHashMap<String, ChannelPrototype>);
 
-impl Deref for CableChannels {
-    type Target = FxHashMap<String, CableChannelPrototype>;
+impl Deref for Cable {
+    type Target = FxHashMap<String, ChannelPrototype>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -125,20 +147,18 @@ const DEFAULT_CABLE_CHANNELS_FILE: &str =
 /// application.
 #[cfg(not(unix))]
 const DEFAULT_CABLE_CHANNELS_FILE: &str =
-    include_str!("../../cable/windows-channels.toml");
+    include_str!("../../../cable/windows-channels.toml");
 
-impl Default for CableChannels {
+impl Default for Cable {
     /// Fallback to the default cable channels specification (the template file
     /// included in the repo).
     fn default() -> Self {
-        let pts = toml::from_str::<SerializedChannelPrototypes>(
-            DEFAULT_CABLE_CHANNELS_FILE,
-        )
-        .expect("Unable to parse default cable channels");
-        let mut channels = FxHashMap::default();
-        for prototype in pts.prototypes {
-            channels.insert(prototype.name.clone(), prototype);
+        let s = toml::from_str::<CableSpec>(DEFAULT_CABLE_CHANNELS_FILE)
+            .expect("Unable to parse default cable channels");
+        let mut prototypes = FxHashMap::default();
+        for prototype in s.prototypes {
+            prototypes.insert(prototype.name.clone(), prototype);
         }
-        CableChannels(channels)
+        Cable(prototypes)
     }
 }

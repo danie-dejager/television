@@ -2,16 +2,11 @@ use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
 use std::process::Stdio;
 
-use prototypes::{CableChannelPrototype, DEFAULT_DELIMITER};
+use prototypes::{ChannelPrototype, DEFAULT_DELIMITER};
 use rustc_hash::{FxBuildHasher, FxHashSet};
 use tracing::debug;
 
-use crate::channels::preview::parse_preview_type;
-use crate::channels::{
-    entry::Entry,
-    preview::{PreviewCommand, PreviewType},
-    OnAir,
-};
+use crate::channels::{entry::Entry, preview::PreviewCommand};
 use crate::matcher::Matcher;
 use crate::matcher::{config::Config, injector::Injector};
 use crate::utils::command::shell_command;
@@ -23,7 +18,7 @@ pub struct Channel {
     pub name: String,
     matcher: Matcher<String>,
     entries_command: String,
-    preview_type: PreviewType,
+    pub preview_command: Option<PreviewCommand>,
     selected_entries: FxHashSet<Entry>,
     crawl_handle: tokio::task::JoinHandle<()>,
 }
@@ -34,13 +29,13 @@ impl Default for Channel {
             "files",
             "find . -type f",
             false,
-            Some(PreviewCommand::new("cat {}", ":")),
+            Some(PreviewCommand::new("cat {}", ":", None)),
         )
     }
 }
 
-impl From<CableChannelPrototype> for Channel {
-    fn from(prototype: CableChannelPrototype) -> Self {
+impl From<ChannelPrototype> for Channel {
+    fn from(prototype: ChannelPrototype) -> Self {
         Self::new(
             &prototype.name,
             &prototype.source_command,
@@ -51,6 +46,7 @@ impl From<CableChannelPrototype> for Channel {
                     &prototype
                         .preview_delimiter
                         .unwrap_or(DEFAULT_DELIMITER.to_string()),
+                    prototype.preview_offset,
                 )),
                 None => None,
             },
@@ -72,23 +68,67 @@ impl Channel {
             interactive,
             injector,
         ));
-        let preview_kind = match preview_command {
-            Some(command) => {
-                parse_preview_type(&command).unwrap_or_else(|_| {
-                    panic!("Invalid preview command: {command}")
-                })
-            }
-            None => PreviewType::None,
-        };
-        debug!("Preview kind: {:?}", preview_kind);
         Self {
             matcher,
             entries_command: entries_command.to_string(),
-            preview_type: preview_kind,
+            preview_command,
             name: name.to_string(),
             selected_entries: HashSet::with_hasher(FxBuildHasher),
             crawl_handle,
         }
+    }
+
+    pub fn find(&mut self, pattern: &str) {
+        self.matcher.find(pattern);
+    }
+
+    pub fn results(&mut self, num_entries: u32, offset: u32) -> Vec<Entry> {
+        self.matcher.tick();
+        self.matcher
+            .results(num_entries, offset)
+            .into_iter()
+            .map(|item| {
+                let path = item.matched_string;
+                Entry::new(path).with_name_match_indices(&item.match_indices)
+            })
+            .collect()
+    }
+
+    pub fn get_result(&self, index: u32) -> Option<Entry> {
+        self.matcher.get_result(index).map(|item| {
+            let path = item.matched_string;
+            Entry::new(path)
+        })
+    }
+
+    pub fn selected_entries(&self) -> &FxHashSet<Entry> {
+        &self.selected_entries
+    }
+
+    pub fn toggle_selection(&mut self, entry: &Entry) {
+        if self.selected_entries.contains(entry) {
+            self.selected_entries.remove(entry);
+        } else {
+            self.selected_entries.insert(entry.clone());
+        }
+    }
+
+    pub fn result_count(&self) -> u32 {
+        self.matcher.matched_item_count
+    }
+
+    pub fn total_count(&self) -> u32 {
+        self.matcher.total_item_count
+    }
+
+    pub fn running(&self) -> bool {
+        self.matcher.status.running || !self.crawl_handle.is_finished()
+    }
+
+    pub fn shutdown(&self) {}
+
+    pub fn supports_preview(&self) -> bool {
+        self.preview_command.is_some()
     }
 }
 
@@ -135,60 +175,4 @@ async fn load_candidates(
         }
     }
     let _ = child.wait();
-}
-
-impl OnAir for Channel {
-    fn find(&mut self, pattern: &str) {
-        self.matcher.find(pattern);
-    }
-
-    fn results(&mut self, num_entries: u32, offset: u32) -> Vec<Entry> {
-        self.matcher.tick();
-        self.matcher
-            .results(num_entries, offset)
-            .into_iter()
-            .map(|item| {
-                let path = item.matched_string;
-                Entry::new(path, self.preview_type.clone())
-                    .with_name_match_indices(&item.match_indices)
-            })
-            .collect()
-    }
-
-    fn get_result(&self, index: u32) -> Option<Entry> {
-        self.matcher.get_result(index).map(|item| {
-            let path = item.matched_string;
-            Entry::new(path, self.preview_type.clone())
-        })
-    }
-
-    fn selected_entries(&self) -> &FxHashSet<Entry> {
-        &self.selected_entries
-    }
-
-    fn toggle_selection(&mut self, entry: &Entry) {
-        if self.selected_entries.contains(entry) {
-            self.selected_entries.remove(entry);
-        } else {
-            self.selected_entries.insert(entry.clone());
-        }
-    }
-
-    fn result_count(&self) -> u32 {
-        self.matcher.matched_item_count
-    }
-
-    fn total_count(&self) -> u32 {
-        self.matcher.total_item_count
-    }
-
-    fn running(&self) -> bool {
-        self.matcher.status.running || !self.crawl_handle.is_finished()
-    }
-
-    fn shutdown(&self) {}
-
-    fn supports_preview(&self) -> bool {
-        self.preview_type != PreviewType::None
-    }
 }
