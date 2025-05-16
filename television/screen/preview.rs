@@ -1,5 +1,4 @@
-use crate::preview::PreviewState;
-use crate::preview::{PreviewContent, LOADING_MSG, TIMEOUT_MSG};
+use crate::previewer::state::PreviewState;
 use crate::screen::colors::Colorscheme;
 use crate::utils::strings::{
     replace_non_printable, shrink_with_ellipsis, ReplaceNonPrintableConfig,
@@ -12,13 +11,9 @@ use ratatui::widgets::{Block, BorderType, Borders, Padding, Paragraph};
 use ratatui::Frame;
 use ratatui::{
     layout::{Alignment, Rect},
-    prelude::{Color, Line, Modifier, Span, Style, Stylize, Text},
+    prelude::{Color, Line, Span, Style, Stylize, Text},
 };
 use std::str::FromStr;
-
-#[allow(dead_code)]
-const FILL_CHAR_SLANTED: char = '╱';
-const FILL_CHAR_EMPTY: char = ' ';
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw_preview_content_block(
@@ -38,10 +33,8 @@ pub fn draw_preview_content_block(
     )?;
     // render the preview content
     let rp = build_preview_paragraph(
-        inner,
-        &preview_state.preview.content,
-        preview_state.target_line,
-        preview_state.scroll,
+        preview_state,
+        colorscheme.preview.highlight_bg,
     );
     f.render_widget(rp, inner);
 
@@ -49,10 +42,8 @@ pub fn draw_preview_content_block(
 }
 
 pub fn build_preview_paragraph(
-    inner: Rect,
-    preview_content: &PreviewContent,
-    #[allow(unused_variables)] target_line: Option<u16>,
-    preview_scroll: u16,
+    preview_state: &PreviewState,
+    highlight_bg: Color,
 ) -> Paragraph<'_> {
     let preview_block =
         Block::default().style(Style::default()).padding(Padding {
@@ -62,60 +53,30 @@ pub fn build_preview_paragraph(
             left: 1,
         });
 
-    match preview_content {
-        PreviewContent::AnsiText(text) => {
-            build_ansi_text_paragraph(text, preview_block, preview_scroll)
-        }
-        // meta
-        PreviewContent::Loading => {
-            build_meta_preview_paragraph(inner, LOADING_MSG, FILL_CHAR_EMPTY)
-                .block(preview_block)
-                .alignment(Alignment::Left)
-                .style(Style::default().add_modifier(Modifier::ITALIC))
-        }
-        PreviewContent::Timeout => {
-            build_meta_preview_paragraph(inner, TIMEOUT_MSG, FILL_CHAR_EMPTY)
-                .block(preview_block)
-                .alignment(Alignment::Left)
-                .style(Style::default().add_modifier(Modifier::ITALIC))
-        }
-        PreviewContent::Empty => Paragraph::new(Text::raw(EMPTY_STRING)),
-    }
+    build_ansi_text_paragraph(
+        &preview_state.preview.content,
+        preview_block,
+        preview_state.target_line,
+        highlight_bg,
+    )
 }
-
-const ANSI_BEFORE_CONTEXT_SIZE: u16 = 10;
-const ANSI_CONTEXT_SIZE: usize = 150;
 
 fn build_ansi_text_paragraph<'a>(
     text: &'a str,
     preview_block: Block<'a>,
-    preview_scroll: u16,
+    target_line: Option<u16>,
+    highlight_bg: Color,
 ) -> Paragraph<'a> {
-    let lines = text.lines();
-    let skip =
-        preview_scroll.saturating_sub(ANSI_BEFORE_CONTEXT_SIZE) as usize;
-    let context = lines
-        .skip(skip)
-        .take(ANSI_CONTEXT_SIZE)
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let mut text = "\n".repeat(skip);
-    text.push_str(
-        &replace_non_printable(
-            context.as_bytes(),
-            &ReplaceNonPrintableConfig {
-                replace_line_feed: false,
-                replace_control_characters: false,
-                ..Default::default()
-            },
-        )
-        .0,
-    );
-
-    Paragraph::new(text.into_text().unwrap())
-        .block(preview_block)
-        .scroll((preview_scroll, 0))
+    let mut t = text.into_text().unwrap();
+    if let Some(target_line) = target_line {
+        // Highlight the target line
+        if let Some(line) = t.lines.get_mut((target_line - 1) as usize) {
+            for span in &mut line.spans {
+                span.style = span.style.bg(highlight_bg);
+            }
+        }
+    }
+    Paragraph::new(t).block(preview_block)
 }
 
 pub fn build_meta_preview_paragraph<'a>(

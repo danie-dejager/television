@@ -472,11 +472,11 @@ pub fn draw(c: &mut Criterion) {
                 let backend = TestBackend::new(width, height);
                 let terminal = Terminal::new(backend).unwrap();
                 let (tx, _) = tokio::sync::mpsc::unbounded_channel();
-                let channel = ChannelPrototype::default();
+                let channel_prototype = ChannelPrototype::default();
                 // Wait for the channel to finish loading
                 let mut tv = Television::new(
                     tx,
-                    channel,
+                    &channel_prototype,
                     config,
                     None,
                     false,
@@ -491,9 +491,7 @@ pub fn draw(c: &mut Criterion) {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
                 tv.select_next_entry(10);
-                let _ = tv.update_preview_state(
-                    &tv.get_selected_entry(None).unwrap(),
-                );
+                let _ = tv.update_preview_state(&tv.get_selected_entry(None));
                 let _ = tv.update(&Action::Tick);
                 (tv, terminal)
             },
