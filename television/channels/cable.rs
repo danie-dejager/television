@@ -12,7 +12,7 @@ use crate::matcher::Matcher;
 use crate::matcher::{config::Config, injector::Injector};
 use crate::utils::command::shell_command;
 
-use super::prototypes::format_prototype_string;
+use crate::utils::strings::format_string;
 
 pub struct Channel {
     pub name: String,
@@ -72,11 +72,8 @@ impl Channel {
             let name = item.matched_string;
             if let Some(cmd) = &self.preview_command {
                 if let Some(offset_expr) = &cmd.offset_expr {
-                    let offset_string = format_prototype_string(
-                        offset_expr,
-                        &name,
-                        &cmd.delimiter,
-                    );
+                    let offset_string =
+                        format_string(offset_expr, &name, &cmd.delimiter);
                     let offset_str = {
                         offset_string
                             .strip_prefix('\'')
@@ -152,6 +149,7 @@ async fn load_candidates(
             if let Ok(l) = line {
                 if !l.trim().is_empty() {
                     let () = injector.push(l, |e, cols| {
+                        // PERF: maybe we can avoid cloning here by using &Utf32Str
                         cols[0] = e.clone().into();
                     });
                     produced_output = true;
