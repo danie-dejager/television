@@ -121,6 +121,12 @@ impl Display for CommandSpec {
     }
 }
 
+impl From<Template> for CommandSpec {
+    fn from(template: Template) -> Self {
+        Self::new(vec![template], false, FxHashMap::default())
+    }
+}
+
 impl CommandSpec {
     pub fn new(
         inner: Vec<Template>,
@@ -168,20 +174,28 @@ impl ChannelKeyBindings {
     }
 }
 
+#[derive(Default, Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct HistoryConfig {
+    /// Whether to use global history for this channel (overrides global setting)
+    #[serde(default)]
+    pub global_mode: Option<bool>,
+}
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ChannelPrototype {
     pub metadata: Metadata,
-    #[serde(rename = "source")]
     pub source: SourceSpec,
-    #[serde(default, rename = "preview")]
+    #[serde(default)]
     pub preview: Option<PreviewSpec>,
-    #[serde(default, rename = "ui")]
+    #[serde(default)]
     pub ui: Option<UiSpec>,
     #[serde(default)]
     pub keybindings: Option<ChannelKeyBindings>,
     /// Watch interval in seconds for automatic reloading (0 = disabled)
     #[serde(default)]
     pub watch: f64,
+    #[serde(default)]
+    pub history: HistoryConfig,
     // actions: Vec<Action>,
 }
 
@@ -210,6 +224,7 @@ impl ChannelPrototype {
             ui: None,
             keybindings: None,
             watch: 0.0,
+            history: HistoryConfig::default(),
         }
     }
 
@@ -239,6 +254,7 @@ impl ChannelPrototype {
             ui: None,
             keybindings: None,
             watch: 0.0,
+            history: HistoryConfig::default(),
         }
     }
 

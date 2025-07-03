@@ -85,6 +85,9 @@ pub struct PostProcessedCli {
     // UI and layout configuration
     pub layout: Option<Orientation>,
     pub ui_scale: u16,
+    pub height: Option<u16>,
+    pub width: Option<u16>,
+    pub inline: bool,
 
     // Behavior and matching configuration
     pub exact: bool,
@@ -96,6 +99,9 @@ pub struct PostProcessedCli {
     // Performance configuration
     pub tick_rate: Option<f64>,
     pub watch_interval: Option<f64>,
+
+    // History configuration
+    pub global_history: bool,
 
     // Configuration sources
     pub config_file: Option<PathBuf>,
@@ -149,6 +155,9 @@ impl Default for PostProcessedCli {
             // UI and layout configuration
             layout: None,
             ui_scale: DEFAULT_UI_SCALE,
+            height: None,
+            width: None,
+            inline: false,
 
             // Behavior and matching configuration
             exact: false,
@@ -160,6 +169,9 @@ impl Default for PostProcessedCli {
             // Performance configuration
             tick_rate: None,
             watch_interval: None,
+
+            // History configuration
+            global_history: false,
 
             // Configuration sources
             config_file: None,
@@ -229,6 +241,13 @@ pub fn post_process(cli: Cli, readable_stdin: bool) -> PostProcessedCli {
     // Validate interdependent flags for ad-hoc mode (when no channel is specified)
     // This ensures ad-hoc channels have all necessary components to function properly
     validate_adhoc_mode_constraints(&cli, readable_stdin);
+
+    // Validate width flag requires inline or height
+    if cli.width.is_some() && !cli.inline && cli.height.is_none() {
+        cli_parsing_error_exit(
+            "--width can only be used in combination with --inline or --height",
+        );
+    }
 
     // Determine channel and working_directory
     let (channel, working_directory) = match &cli.channel {
@@ -326,6 +345,9 @@ pub fn post_process(cli: Cli, readable_stdin: bool) -> PostProcessedCli {
         // UI and layout configuration
         layout,
         ui_scale: cli.ui_scale,
+        height: cli.height,
+        width: cli.width,
+        inline: cli.inline,
 
         // Behavior and matching configuration
         exact: cli.exact,
@@ -337,6 +359,9 @@ pub fn post_process(cli: Cli, readable_stdin: bool) -> PostProcessedCli {
         // Performance configuration
         tick_rate: cli.tick_rate,
         watch_interval: cli.watch,
+
+        // History configuration
+        global_history: cli.global_history,
 
         // Configuration sources
         config_file: cli.config_file.map(|p| expand_tilde(&p)),
