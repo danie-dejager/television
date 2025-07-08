@@ -4,8 +4,7 @@ All notable changes to this project will be documented in this file.
 <!-- ignore lint rules that are often triggered by content generated from commits / git-cliff -->
 <!-- markdownlint-disable line-length no-bare-urls ul-style emphasis-style -->
 
-
-## [unreleased]
+## [0.12.0](https://github.com/alexpasmantier/television/releases/tag/0.12.0) - 2025-07-07
 
 ### ⛰️  Features
 
@@ -177,9 +176,23 @@ All notable changes to this project will be documented in this file.
 
 ### 📚 Documentation
 
+- [825e974](https://github.com/alexpasmantier/television/commit/825e97436360f3cbb5b40d4053c10c435352e6c9) *(cable)* Update channel documentation (auto) by @github-actions[bot] in [#594](https://github.com/alexpasmantier/television/pull/594)
+
+- [185f789](https://github.com/alexpasmantier/television/commit/185f7890ac27ca1580231c2f24fe6a696fd3f322) *(cable)* Update channel documentation (auto) by @github-actions[bot]
+
+- [8bdebd3](https://github.com/alexpasmantier/television/commit/8bdebd382ef9fe1f8ac74106b91cbdfdd308ef27) *(channels)* Autogenerate channel documentation + CI action by @alexpasmantier
+
 - [6015809](https://github.com/alexpasmantier/television/commit/601580953a11b4c1061c97c5417ffeacd154354d) *(tests)* Simple documentation for the `PtyTester` by @alexpasmantier
 
 - [7bbf538](https://github.com/alexpasmantier/television/commit/7bbf5388984ea4a9afa4daad695add4c258c0fb1) *(utils)* Add documentation for string formatting logic by @alexpasmantier in [#517](https://github.com/alexpasmantier/television/pull/517)
+
+- [0112b40](https://github.com/alexpasmantier/television/commit/0112b40df3d12a2f540ee7bbd5d6e24da6c2d048) *(uncategorized)* Update installation docs by @alexpasmantier
+
+- [e5654fc](https://github.com/alexpasmantier/television/commit/e5654fcddee638905a5e6478763e6b738ec469d1) *(uncategorized)* Add docusaurus website by @alexpasmantier
+
+- [e797aba](https://github.com/alexpasmantier/television/commit/e797aba7c1e5fbdc6afabac69d2bbcb32767bf80) *(uncategorized)* Reorganize docs by @alexpasmantier
+
+- [106004d](https://github.com/alexpasmantier/television/commit/106004de948327f248c14f8eebdc40b54af58a4c) *(uncategorized)* Architecture by @alexpasmantier
 
 - [1d33c93](https://github.com/alexpasmantier/television/commit/1d33c9391039f703b3b9848784ab58d3f5372a7d) *(uncategorized)* Add readme banner by @alexpasmantier
 
@@ -235,6 +248,8 @@ All notable changes to this project will be documented in this file.
 
 ### ⚙️ Miscellaneous Tasks
 
+- [f58e46c](https://github.com/alexpasmantier/television/commit/f58e46c40aca9a31003c2120bcd6772643d38bbb) *(changelog)* Update changelog (auto) by @github-actions[bot] in [#591](https://github.com/alexpasmantier/television/pull/591)
+
 - [d106ada](https://github.com/alexpasmantier/television/commit/d106adafc0a8f4d17bc4235e3bc439487db4a0b4) *(changelog)* Update changelog (auto) by @github-actions[bot] in [#513](https://github.com/alexpasmantier/television/pull/513)
 
 - [64c599e](https://github.com/alexpasmantier/television/commit/64c599ef103d18e852d1070c6b313800646f1940) *(changelog)* Update changelog (auto) by @github-actions[bot] in [#491](https://github.com/alexpasmantier/television/pull/491)
@@ -246,6 +261,8 @@ All notable changes to this project will be documented in this file.
 - [738fe08](https://github.com/alexpasmantier/television/commit/738fe08fbb5fae9f1185b9980c7c344652b7b9d4) *(rust)* Update rust edition to 2024 and version to 1.87 by @alexpasmantier in [#528](https://github.com/alexpasmantier/television/pull/528)
 
 - [f6b2205](https://github.com/alexpasmantier/television/commit/f6b22051cdfbce8f6598c5d36c4b75887ff65998) *(tui-input)* Add credit and license for `television/utils/input.rs` by @alexpasmantier in [#544](https://github.com/alexpasmantier/television/pull/544)
+
+- [f1c6816](https://github.com/alexpasmantier/television/commit/f1c68167eae6c1d77cdaac9c9039f3aeef95849d) *(uncategorized)* Bump to 0.12.0 by @alexpasmantier
 
 - [429bfae](https://github.com/alexpasmantier/television/commit/429bfaeb2f3dbbc7015213db1c2f12564615e5ca) *(uncategorized)* Remove unused serde renames by @alexpasmantier
 
@@ -265,6 +282,8 @@ All notable changes to this project will be documented in this file.
 * @kapobajza made their first contribution in [#568](https://github.com/alexpasmantier/television/pull/568)
 * @domaschh made their first contribution
 * @cr4ftx made their first contribution in [#496](https://github.com/alexpasmantier/television/pull/496)
+
+**Full Changelog**: https://github.com/alexpasmantier/television/compare/0.11.9...0.12.0
 
 
 ## [0.11.9](https://github.com/alexpasmantier/television/releases/tag/0.11.9) - 2025-04-21

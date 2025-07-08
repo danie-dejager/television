@@ -1,4 +1,4 @@
-# Television CLI Reference
+# CLI Reference
 
 Television (`tv`) is a cross-platform, fast and extensible general purpose fuzzy finder TUI. This document provides a comprehensive reference for all CLI options, modes, restrictions, and usage patterns.
 
@@ -575,18 +575,18 @@ Television uses a layered configuration system where each layer can override the
 
 Television features support dual-state control: **enabled/disabled** and **visible/not visible**.
 
-> **📖 For more details on the ui feature documentation**, see [`ui-features.md`](ui-features.md).
+> **📖 For more details on the ui feature documentation**, see [`ui-features.md`](../02-Developers/02-ui-features.md).
 
 #### Quick Feature Overview
 
 Television supports four main UI features:
 
-| Feature | Purpose | Default State | CLI Controls |
-|---------|---------|---------------|--------------|
-| **Preview Panel** | Shows contextual information for selected entries | Enabled & Visible | `--no-preview`, `--hide-preview`, `--show-preview` |
-| **Status Bar** | Displays application status and available actions | Enabled & Visible | `--no-status-bar`, `--hide-status-bar`, `--show-status-bar` |
-| **Help Panel** | Shows contextual help and keyboard shortcuts | Enabled but Hidden | `--no-help-panel`, `--hide-help-panel`, `--show-help-panel` |
-| **Remote Control** | Provides channel switching interface | Enabled but Hidden | `--no-remote`, `--hide-remote`, `--show-remote` |
+| Feature            | Purpose                                           | Default State      | CLI Controls                                                |
+| ------------------ | ------------------------------------------------- | ------------------ | ----------------------------------------------------------- |
+| **Preview Panel**  | Shows contextual information for selected entries | Enabled & Visible  | `--no-preview`, `--hide-preview`, `--show-preview`          |
+| **Status Bar**     | Displays application status and available actions | Enabled & Visible  | `--no-status-bar`, `--hide-status-bar`, `--show-status-bar` |
+| **Help Panel**     | Shows contextual help and keyboard shortcuts      | Enabled but Hidden | `--no-help-panel`, `--hide-help-panel`, `--show-help-panel` |
+| **Remote Control** | Provides channel switching interface              | Enabled but Hidden | `--no-remote`, `--hide-remote`, `--show-remote`             |
 
 #### CLI Feature Override Examples
 
@@ -610,11 +610,11 @@ Television uses a powerful template system for dynamic content generation. Templ
 
 ### Template-Enabled Flags
 
-| Flag Category | Flags Using Templates |
-|---------------|----------------------|
-| **Source** | `--source-command`, `--source-display`, `--source-output` |
-| **Preview** | `--preview-command`, `--preview-offset` |
-| **Headers** | `--input-header`, `--preview-header`, `--preview-footer` |
+| Flag Category | Flags Using Templates                                     |
+| ------------- | --------------------------------------------------------- |
+| **Source**    | `--source-command`, `--source-display`, `--source-output` |
+| **Preview**   | `--preview-command`, `--preview-offset`                   |
+| **Headers**   | `--input-header`, `--preview-header`, `--preview-footer`  |
 
 ### Basic Template Syntax
 
@@ -626,26 +626,26 @@ Templates support a wide range of operations that can be chained together:
 
 ### Core Template Operations
 
-| Operation | Description | Example |
-|-----------|-------------|---------|
-| `{}` | Full entry (passthrough) | `{}` → original entry |
+| Operation                 | Description                  | Example                              |
+| ------------------------- | ---------------------------- | ------------------------------------ |
+| `{}`                      | Full entry (passthrough)     | `{}` → original entry                |
 | `{split:SEPARATOR:RANGE}` | Split text and extract parts | `{split:/:‑1}` → last path component |
-| `{upper}` | Convert to uppercase | `{upper}` → "HELLO" |
-| `{lower}` | Convert to lowercase | `{lower}` → "hello" |
-| `{trim}` | Remove whitespace | `{trim}` → "text" |
-| `{append:TEXT}` | Add text to end | `{append:.txt}` → "file.txt" |
-| `{prepend:TEXT}` | Add text to beginning | `{prepend:/home/}` → "/home/file" |
+| `{upper}`                 | Convert to uppercase         | `{upper}` → "HELLO"                  |
+| `{lower}`                 | Convert to lowercase         | `{lower}` → "hello"                  |
+| `{trim}`                  | Remove whitespace            | `{trim}` → "text"                    |
+| `{append:TEXT}`           | Add text to end              | `{append:.txt}` → "file.txt"         |
+| `{prepend:TEXT}`          | Add text to beginning        | `{prepend:/home/}` → "/home/file"    |
 
 ### Advanced Template Operations
 
-| Operation | Description | Example |
-|-----------|-------------|---------|
-| `{replace:s/PATTERN/REPLACEMENT/FLAGS}` | Regex find and replace | `{replace:s/\\.py$/.backup/}` |
-| `{regex_extract:PATTERN}` | Extract matching text | `{regex_extract:\\d+}` → extract numbers |
-| `{filter:PATTERN}` | Keep items matching pattern | `{split:,:..\|filter:^test}` |
-| `{sort}` | Sort list items | `{split:,:..\|sort}` |
-| `{unique}` | Remove duplicates | `{split:,:..\|unique}` |
-| `{join:SEPARATOR}` | Join list with separator | `{split:,:..\|join:-}` |
+| Operation                               | Description                 | Example                                  |
+| --------------------------------------- | --------------------------- | ---------------------------------------- |
+| `{replace:s/PATTERN/REPLACEMENT/FLAGS}` | Regex find and replace      | `{replace:s/\\.py$/.backup/}`            |
+| `{regex_extract:PATTERN}`               | Extract matching text       | `{regex_extract:\\d+}` → extract numbers |
+| `{filter:PATTERN}`                      | Keep items matching pattern | `{split:,:..\|filter:^test}`             |
+| `{sort}`                                | Sort list items             | `{split:,:..\|sort}`                     |
+| `{unique}`                              | Remove duplicates           | `{split:,:..\|unique}`                   |
+| `{join:SEPARATOR}`                      | Join list with separator    | `{split:,:..\|join:-}`                   |
 
 ### Template Examples
 
@@ -665,16 +665,16 @@ Templates support a wide range of operations that can be chained together:
 
 ### Range Specifications
 
-| Syntax | Description |
-|--------|-------------|
-| `N` | Single index (0-based) |
-| `N..M` | Range exclusive (items N to M-1) |
-| `N..=M` | Range inclusive (items N to M) |
-| `N..` | From N to end |
-| `..M` | From start to M-1 |
-| `..` | All items |
-| `-1` | Last item |
-| `-N` | N-th from end |
+| Syntax  | Description                      |
+| ------- | -------------------------------- |
+| `N`     | Single index (0-based)           |
+| `N..M`  | Range exclusive (items N to M-1) |
+| `N..=M` | Range inclusive (items N to M)   |
+| `N..`   | From N to end                    |
+| `..M`   | From start to M-1                |
+| `..`    | All items                        |
+| `-1`    | Last item                        |
+| `-N`    | N-th from end                    |
 
 For complete template documentation, see the [Template System Documentation](https://github.com/lalvarezt/string_pipeline/blob/main/docs/template-system.md).
 
