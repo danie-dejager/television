@@ -75,21 +75,10 @@ alias b := build
 # Build the project in release mode
 br: (build 'release')
 
-
-# test the zsh shell completion script in debug mode
-# Run: `source <(just generate-zsh-completion)` directly in zsh
-@generate-zsh-completion:
-	cargo run -- init zsh | sed 's/tv /.\/target\/debug\/tv /'
-
-# test the fish shell completion script in debug mode
-# Run: `source <(just generate-fish-completion)` directly in fish
-@generate-fish-completion:
-	cargo run -- init fish | sed '2,$ s/tv /.\/target\/debug\/tv /'
-
-# test the bash shell completion script in debug mode
-# Run: `source <(just generate-bash-completion)` directly in bash
-@generate-bash-completion:
-	cargo run -- init bash | sed 's/tv /.\/target\/debug\/tv /'
+# Generate a dev shell integration script for local development
+@generate-dev-shell-integration shell='zsh':
+	cargo run -- init {{ shell }} | sed 's/tv /.\/target\/debug\/tv /' > dev_shell_integration.{{ shell }}
+	echo 'To activate {{ shell }} dev integration, run:  `source dev_shell_integration.{{ shell }}`'
 
 # Update the project's changelog
 @update-changelog:
@@ -107,16 +96,22 @@ update-man: build
 	else echo "No changes to manpages"
 	fi
 
-publish:
+@publish:
 	echo "Publishing {{ NAME }}..."
 	cargo publish --all-features
 	echo "Done"
 
-commit-release:
+@commit-release:
 	#!/usr/bin/env sh
 	version=$(grep -E '^\s*version\s*=' Cargo.toml | cut -d '"' -f 2)
 	git commit -am "chore: release version $version"
 	git tag "$version"
+
+@push-release:
+	#!/usr/bin/env sh
+	echo "Pushing changes and tags to remote..."
+	git push origin main --tags
+	echo "Done"
 
 alias rl := release
 # Publish a new release (major, minor, or patch)
