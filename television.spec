@@ -37,10 +37,10 @@ mkdir -p %{buildroot}/usr/share/man/man1
 # Copy the binary to /bin in the buildroot
 install -m 755 target/release/tv %{buildroot}/bin/
 mkdir -p %{buildroot}/usr/share/doc/%{name}
-install -m 644 LICENSE %{buildroot}/usr/share/doc/%{name}/
+mkdir -p %{buildroot}/usr/share/licenses/%{name}
+install -m 644 LICENSE %{buildroot}/usr/share/licenses/%{name}/
 install -m 644 README.md %{buildroot}/usr/share/doc/%{name}/
 gzip man/tv.1
-
 install -m 644 man/tv.1.gz %{buildroot}/usr/share/man/man1/
 
 %files
