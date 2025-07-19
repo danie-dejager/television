@@ -1,6 +1,6 @@
 %define name television
 %define version 0.12.5
-%define release 1%{?dist}
+%define release 2%{?dist}
 
 Summary:  The revolution will (not) be televised
 Name:     %{name}
@@ -44,7 +44,7 @@ gzip man/tv.1
 install -m 644 man/tv.1.gz %{buildroot}/usr/share/man/man1/
 
 %files
-/usr/share/doc/%{name}/LICENSE
+/bin/%{name}
+/usr/share/licenses/%{name}/LICENSE
 /usr/share/doc/%{name}/README.md
-/bin/tv
-/usr/share/man/man1/tv.1.gz
+/usr/share/man/man1/%{name}.1.gz
