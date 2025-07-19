@@ -44,7 +44,7 @@ gzip man/tv.1
 install -m 644 man/tv.1.gz %{buildroot}/usr/share/man/man1/
 
 %files
-/bin/%{name}
+/bin/tv
 /usr/share/licenses/%{name}/LICENSE
 /usr/share/doc/%{name}/README.md
-/usr/share/man/man1/%{name}.1.gz
+/usr/share/man/man1/tv.1.gz
