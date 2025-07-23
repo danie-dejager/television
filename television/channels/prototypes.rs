@@ -217,6 +217,7 @@ impl ChannelPrototype {
                     env: FxHashMap::default(),
                 },
                 entry_delimiter: None,
+                ansi: false,
                 display: None,
                 output: None,
             },
@@ -246,6 +247,7 @@ impl ChannelPrototype {
                     interactive: false,
                     env: FxHashMap::default(),
                 },
+                ansi: false,
                 entry_delimiter,
                 display: None,
                 output: None,
@@ -317,6 +319,8 @@ pub struct SourceSpec {
     #[serde(deserialize_with = "deserialize_entry_delimiter", default)]
     pub entry_delimiter: Option<char>,
     #[serde(default)]
+    pub ansi: bool,
+    #[serde(default)]
     pub display: Option<Template>,
     #[serde(default)]
     pub output: Option<Template>,
@@ -344,11 +348,17 @@ pub struct PreviewSpec {
     pub command: CommandSpec,
     #[serde(default)]
     pub offset: Option<Template>,
+    #[serde(default)]
+    pub cached: bool,
 }
 
 impl PreviewSpec {
     pub fn new(command: CommandSpec, offset: Option<Template>) -> Self {
-        Self { command, offset }
+        Self {
+            command,
+            offset,
+            cached: false,
+        }
     }
 
     pub fn from_str_command(command: &str) -> Self {
@@ -362,6 +372,7 @@ impl PreviewSpec {
                 env: FxHashMap::default(),
             },
             offset: None,
+            cached: false,
         }
     }
 }
