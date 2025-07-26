@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_with::{OneOrMany, serde_as};
 use std::fmt::Display;
 
+use crate::event::Key;
+
 /// The different actions that can be performed by the application.
 #[derive(
     Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord,
@@ -47,6 +49,8 @@ pub enum Action {
     ConfirmSelection,
     /// Select the entry currently under the cursor and exit the application.
     SelectAndExit,
+    /// Confirm selection using one of the `expect` keys.
+    Expect(Key),
     /// Select the next entry in the currently focused list.
     SelectNextEntry,
     /// Select the previous entry in the currently focused list.
@@ -93,8 +97,6 @@ pub enum Action {
     #[serde(skip)]
     NoOp,
     // Channel actions
-    /// FIXME: clean this up
-    ToggleSendToChannel,
     /// Toggle between different source commands.
     CycleSources,
     /// Reload the current source command.
@@ -326,6 +328,7 @@ impl Display for Action {
             Action::ToggleSelectionUp => write!(f, "toggle_selection_up"),
             Action::ConfirmSelection => write!(f, "confirm_selection"),
             Action::SelectAndExit => write!(f, "select_and_exit"),
+            Action::Expect(_) => write!(f, "expect"),
             Action::SelectNextEntry => write!(f, "select_next_entry"),
             Action::SelectPrevEntry => write!(f, "select_prev_entry"),
             Action::SelectNextPage => write!(f, "select_next_page"),
@@ -352,7 +355,6 @@ impl Display for Action {
             Action::TogglePreview => write!(f, "toggle_preview"),
             Action::Error(_) => write!(f, "error"),
             Action::NoOp => write!(f, "no_op"),
-            Action::ToggleSendToChannel => write!(f, "toggle_send_to_channel"),
             Action::CycleSources => write!(f, "cycle_sources"),
             Action::ReloadSource => write!(f, "reload_source"),
             Action::SwitchToChannel(_) => write!(f, "switch_to_channel"),
@@ -363,6 +365,101 @@ impl Display for Action {
                 write!(f, "select_entry_at_position")
             }
             Action::MouseClickAt(_, _) => write!(f, "mouse_click_at"),
+        }
+    }
+}
+
+impl Action {
+    /// Returns a user-friendly description of the action for help panels and UI display.
+    ///
+    /// This method provides human-readable descriptions of actions that are suitable
+    /// for display in help panels, tooltips, and other user interfaces. Unlike the
+    /// `Display` implementation which returns `snake_case` configuration names, this
+    /// method returns descriptive text.
+    ///
+    /// # Returns
+    ///
+    /// A static string slice containing the user-friendly description.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use television::action::Action;
+    ///
+    /// assert_eq!(Action::Quit.description(), "Quit");
+    /// assert_eq!(Action::SelectNextEntry.description(), "Navigate down");
+    /// assert_eq!(Action::TogglePreview.description(), "Toggle preview");
+    /// ```
+    pub fn description(&self) -> &'static str {
+        match self {
+            // Input actions
+            Action::AddInputChar(_) => "Add character",
+            Action::DeletePrevChar => "Delete previous char",
+            Action::DeletePrevWord => "Delete previous word",
+            Action::DeleteNextChar => "Delete next char",
+            Action::DeleteLine => "Delete line",
+            Action::GoToPrevChar => "Move cursor left",
+            Action::GoToNextChar => "Move cursor right",
+            Action::GoToInputStart => "Move to start",
+            Action::GoToInputEnd => "Move to end",
+
+            // Rendering actions (typically not shown in help)
+            Action::Render => "Render",
+            Action::Resize(_, _) => "Resize",
+            Action::ClearScreen => "Clear screen",
+
+            // Selection actions
+            Action::ToggleSelectionDown => "Toggle selection down",
+            Action::ToggleSelectionUp => "Toggle selection up",
+            Action::ConfirmSelection => "Select entry",
+            Action::SelectAndExit => "Select and exit",
+            Action::Expect(_) => "Expect key",
+
+            // Navigation actions
+            Action::SelectNextEntry => "Navigate down",
+            Action::SelectPrevEntry => "Navigate up",
+            Action::SelectNextPage => "Page down",
+            Action::SelectPrevPage => "Page up",
+            Action::CopyEntryToClipboard => "Copy to clipboard",
+
+            // Preview actions
+            Action::ScrollPreviewUp => "Preview scroll up",
+            Action::ScrollPreviewDown => "Preview scroll down",
+            Action::ScrollPreviewHalfPageUp => "Preview scroll half page up",
+            Action::ScrollPreviewHalfPageDown => {
+                "Preview scroll half page down"
+            }
+            Action::OpenEntry => "Open entry",
+
+            // Application actions
+            Action::Tick => "Tick",
+            Action::Suspend => "Suspend",
+            Action::Resume => "Resume",
+            Action::Quit => "Quit",
+
+            // Toggle actions
+            Action::ToggleRemoteControl => "Toggle remote control",
+            Action::ToggleHelp => "Toggle help",
+            Action::ToggleStatusBar => "Toggle status bar",
+            Action::TogglePreview => "Toggle preview",
+
+            // Error and no-op
+            Action::Error(_) => "Error",
+            Action::NoOp => "No operation",
+
+            // Channel actions
+            Action::CycleSources => "Cycle sources",
+            Action::ReloadSource => "Reload source",
+            Action::SwitchToChannel(_) => "Switch to channel",
+            Action::WatchTimer => "Watch timer",
+
+            // History actions
+            Action::SelectPrevHistory => "Previous history",
+            Action::SelectNextHistory => "Next history",
+
+            // Mouse actions
+            Action::SelectEntryAtPosition(_, _) => "Select at position",
+            Action::MouseClickAt(_, _) => "Mouse click",
         }
     }
 }
@@ -447,5 +544,28 @@ mod tests {
 
         assert_eq!(map.get(&actions2), Some(&"single"));
         assert_eq!(map.get(&actions4), Some(&"multiple"));
+    }
+
+    #[test]
+    fn test_action_description() {
+        // Test that description() returns user-friendly text
+        assert_eq!(Action::Quit.description(), "Quit");
+        assert_eq!(Action::SelectNextEntry.description(), "Navigate down");
+        assert_eq!(Action::SelectPrevEntry.description(), "Navigate up");
+        assert_eq!(Action::TogglePreview.description(), "Toggle preview");
+        assert_eq!(Action::ToggleHelp.description(), "Toggle help");
+        assert_eq!(Action::ConfirmSelection.description(), "Select entry");
+        assert_eq!(
+            Action::CopyEntryToClipboard.description(),
+            "Copy to clipboard"
+        );
+
+        // Test that description() differs from Display (snake_case)
+        assert_ne!(
+            Action::SelectNextEntry.description(),
+            Action::SelectNextEntry.to_string()
+        );
+        assert_eq!(Action::SelectNextEntry.to_string(), "select_next_entry");
+        assert_eq!(Action::SelectNextEntry.description(), "Navigate down");
     }
 }

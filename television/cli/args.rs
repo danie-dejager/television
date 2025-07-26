@@ -33,7 +33,7 @@ pub struct Cli {
     /// A list of the available channels can be displayed using the
     /// `list-channels` command. The channel can also be changed from within
     /// the application.
-    #[arg(value_enum, index = 1, verbatim_doc_comment)]
+    #[arg(index = 1, verbatim_doc_comment)]
     pub channel: Option<String>,
 
     /// A preview line number offset template to use to scroll the preview to for each
@@ -121,6 +121,17 @@ pub struct Cli {
     #[arg(short, long, value_name = "STRING", verbatim_doc_comment)]
     pub keybindings: Option<String>,
 
+    /// Keys that can be used to confirm the current selection in addition to the default ones
+    /// (typically `enter`).
+    ///
+    /// When this is set, confirming the selection will first output an extra line with the key
+    /// that was used to confirm the selection before outputting the selected entry.
+    ///
+    /// Example: `tv --expect='ctrl-q'` will output `ctr-q\n<selected_entry>` when `ctrl-q` is
+    /// pressed to confirm the selection.
+    #[arg(long, value_name = "STRING", verbatim_doc_comment)]
+    pub expect: Option<String>,
+
     /// Input text to pass to the channel to prefill the prompt.
     ///
     /// This flag works identically in both channel mode and ad-hoc mode.
@@ -151,6 +162,20 @@ pub struct Cli {
     #[arg(long, value_name = "STRING", verbatim_doc_comment)]
     pub input_prompt: Option<String>,
 
+    /// Sets the input panel border type.
+    ///
+    /// Available options are: `none`, `plain`, `rounded`, `thick`.
+    #[arg(long, value_enum, verbatim_doc_comment)]
+    pub input_border: Option<BorderType>,
+
+    /// Sets the input panel padding.
+    ///
+    /// Format: `top=INTEGER;left=INTEGER;bottom=INTEGER;right=INTEGER`
+    ///
+    /// Example: `--input-padding='top=1;left=2;bottom=1;right=2'`
+    #[arg(long, value_name = "STRING", verbatim_doc_comment)]
+    pub input_padding: Option<String>,
+
     /// Preview header template
     ///
     /// When a channel is specified: This overrides the header defined in the channel prototype.
@@ -180,6 +205,30 @@ pub struct Cli {
         conflicts_with = "no_preview"
     )]
     pub preview_footer: Option<String>,
+
+    /// Sets the preview panel border type.
+    ///
+    /// Available options are: `none`, `plain`, `rounded`, `thick`.
+    #[arg(
+        long,
+        value_enum,
+        verbatim_doc_comment,
+        conflicts_with = "no_preview"
+    )]
+    pub preview_border: Option<BorderType>,
+
+    /// Sets the preview panel padding.
+    ///
+    /// Format: `top=INTEGER;left=INTEGER;bottom=INTEGER;right=INTEGER`
+    ///
+    /// Example: `--preview-padding='top=1;left=2;bottom=1;right=2'`
+    #[arg(
+        long,
+        value_name = "STRING",
+        verbatim_doc_comment,
+        conflicts_with = "no_preview"
+    )]
+    pub preview_padding: Option<String>,
 
     /// Source command to use for the current channel.
     ///
@@ -219,6 +268,20 @@ pub struct Cli {
     /// Example: "{}" (output the full entry)
     #[arg(long, value_name = "STRING", verbatim_doc_comment)]
     pub source_output: Option<String>,
+
+    /// Sets the results panel border type.
+    ///
+    /// Available options are: `none`, `plain`, `rounded`, `thick`.
+    #[arg(long, value_enum, verbatim_doc_comment)]
+    pub results_border: Option<BorderType>,
+
+    /// Sets the results panel padding.
+    ///
+    /// Format: `top=INTEGER;left=INTEGER;bottom=INTEGER;right=INTEGER`
+    ///
+    /// Example: `--results-padding='top=1;left=2;bottom=1;right=2'`
+    #[arg(long, value_name = "STRING", verbatim_doc_comment)]
+    pub results_padding: Option<String>,
 
     /// The delimiter byte to use for splitting the source's command output into entries.
     ///
@@ -507,6 +570,14 @@ pub enum Shell {
 pub enum LayoutOrientation {
     Landscape,
     Portrait,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+pub enum BorderType {
+    None,
+    Plain,
+    Rounded,
+    Thick,
 }
 
 // Add validator functions

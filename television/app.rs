@@ -2,6 +2,7 @@ use crate::{
     action::Action,
     cable::Cable,
     channels::{entry::Entry, prototypes::ChannelPrototype},
+    cli::PostProcessedCli,
     config::{Config, DEFAULT_PREVIEW_SIZE, default_tick_rate},
     event::{Event, EventLoop, InputEvent, Key, MouseInputEvent},
     history::History,
@@ -143,6 +144,7 @@ pub struct App {
 #[derive(Debug, PartialEq)]
 pub enum ActionOutcome {
     Entries(FxHashSet<Entry>),
+    EntriesWithExpect(FxHashSet<Entry>, Key),
     Input(String),
     None,
 }
@@ -151,6 +153,7 @@ pub enum ActionOutcome {
 #[derive(Debug)]
 pub struct AppOutput {
     pub selected_entries: Option<FxHashSet<Entry>>,
+    pub expect_key: Option<Key>,
 }
 
 impl AppOutput {
@@ -158,14 +161,21 @@ impl AppOutput {
         match action_outcome {
             ActionOutcome::Entries(entries) => Self {
                 selected_entries: Some(entries),
+                expect_key: None,
+            },
+            ActionOutcome::EntriesWithExpect(entries, expect_key) => Self {
+                selected_entries: Some(entries),
+                expect_key: Some(expect_key),
             },
             ActionOutcome::Input(input) => Self {
                 selected_entries: Some(FxHashSet::from_iter([Entry::new(
                     input,
                 )])),
+                expect_key: None,
             },
             ActionOutcome::None => Self {
                 selected_entries: None,
+                expect_key: None,
             },
         }
     }
@@ -178,9 +188,9 @@ impl App {
     pub fn new(
         channel_prototype: ChannelPrototype,
         config: Config,
-        input: Option<String>,
         options: AppOptions,
         cable_channels: Cable,
+        cli_args: &PostProcessedCli,
     ) -> Self {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let (render_tx, render_rx) = mpsc::unbounded_channel();
@@ -192,12 +202,8 @@ impl App {
             action_tx.clone(),
             channel_prototype,
             config,
-            input,
-            options.no_remote,
-            options.no_preview,
-            options.preview_size,
-            options.exact,
             cable_channels,
+            cli_args.clone(),
         );
 
         // Create input map from the merged config that includes both key and event bindings
@@ -600,6 +606,30 @@ impl App {
                                 self.television.current_channel(),
                             )?;
                             return Ok(ActionOutcome::Entries(entries));
+                        }
+
+                        return Ok(ActionOutcome::Input(
+                            self.television.current_pattern.clone(),
+                        ));
+                    }
+                    Action::Expect(k) => {
+                        self.should_quit = true;
+                        if !self.render_tx.is_closed() {
+                            self.render_tx.send(RenderingTask::Quit)?;
+                        }
+                        if let Some(entries) =
+                            self.television.get_selected_entries()
+                        {
+                            // Add current query to history
+                            let query =
+                                self.television.current_pattern.clone();
+                            self.history.add_entry(
+                                query,
+                                self.television.current_channel(),
+                            )?;
+                            return Ok(ActionOutcome::EntriesWithExpect(
+                                entries, k,
+                            ));
                         }
 
                         return Ok(ActionOutcome::Input(
