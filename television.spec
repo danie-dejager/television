@@ -1,6 +1,6 @@
 %define name television
-%define version 0.12.5
-%define release 2%{?dist}
+%define version 0.13.2
+%define release 1%{?dist}
 
 Summary:  The revolution will (not) be televised
 Name:     %{name}
