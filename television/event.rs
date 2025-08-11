@@ -169,42 +169,42 @@ impl<'de> Deserialize<'de> for Key {
 impl Display for Key {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Key::Backspace => write!(f, "Backspace"),
-            Key::Enter => write!(f, "Enter"),
-            Key::Left => write!(f, "Left"),
-            Key::Right => write!(f, "Right"),
-            Key::Up => write!(f, "Up"),
-            Key::Down => write!(f, "Down"),
-            Key::CtrlSpace => write!(f, "Ctrl-Space"),
-            Key::CtrlBackspace => write!(f, "Ctrl-Backspace"),
-            Key::CtrlEnter => write!(f, "Ctrl-Enter"),
-            Key::CtrlLeft => write!(f, "Ctrl-Left"),
-            Key::CtrlRight => write!(f, "Ctrl-Right"),
-            Key::CtrlUp => write!(f, "Ctrl-Up"),
-            Key::CtrlDown => write!(f, "Ctrl-Down"),
-            Key::CtrlDelete => write!(f, "Ctrl-Del"),
-            Key::AltSpace => write!(f, "Alt-Space"),
-            Key::AltEnter => write!(f, "Alt-Enter"),
-            Key::AltBackspace => write!(f, "Alt-Backspace"),
-            Key::AltDelete => write!(f, "Alt-Delete"),
-            Key::AltUp => write!(f, "Alt-Up"),
-            Key::AltDown => write!(f, "Alt-Down"),
-            Key::AltLeft => write!(f, "Alt-Left"),
-            Key::AltRight => write!(f, "Alt-Right"),
-            Key::Home => write!(f, "Home"),
-            Key::End => write!(f, "End"),
-            Key::PageUp => write!(f, "PageUp"),
-            Key::PageDown => write!(f, "PageDown"),
-            Key::BackTab => write!(f, "BackTab"),
-            Key::Delete => write!(f, "Delete"),
-            Key::Insert => write!(f, "Insert"),
-            Key::F(k) => write!(f, "F{k}"),
+            Key::Backspace => write!(f, "backspace"),
+            Key::Enter => write!(f, "enter"),
+            Key::Left => write!(f, "left"),
+            Key::Right => write!(f, "right"),
+            Key::Up => write!(f, "up"),
+            Key::Down => write!(f, "down"),
+            Key::CtrlSpace => write!(f, "ctrl-space"),
+            Key::CtrlBackspace => write!(f, "ctrl-backspace"),
+            Key::CtrlEnter => write!(f, "ctrl-enter"),
+            Key::CtrlLeft => write!(f, "ctrl-left"),
+            Key::CtrlRight => write!(f, "ctrl-right"),
+            Key::CtrlUp => write!(f, "ctrl-up"),
+            Key::CtrlDown => write!(f, "ctrl-down"),
+            Key::CtrlDelete => write!(f, "ctrl-del"),
+            Key::AltSpace => write!(f, "alt-space"),
+            Key::AltEnter => write!(f, "alt-enter"),
+            Key::AltBackspace => write!(f, "alt-backspace"),
+            Key::AltDelete => write!(f, "alt-delete"),
+            Key::AltUp => write!(f, "alt-up"),
+            Key::AltDown => write!(f, "alt-down"),
+            Key::AltLeft => write!(f, "alt-left"),
+            Key::AltRight => write!(f, "alt-right"),
+            Key::Home => write!(f, "home"),
+            Key::End => write!(f, "end"),
+            Key::PageUp => write!(f, "pageup"),
+            Key::PageDown => write!(f, "pagedown"),
+            Key::BackTab => write!(f, "backtab"),
+            Key::Delete => write!(f, "delete"),
+            Key::Insert => write!(f, "insert"),
+            Key::F(k) => write!(f, "f{k}"),
             Key::Char(c) => write!(f, "{c}"),
-            Key::Alt(c) => write!(f, "Alt-{c}"),
-            Key::Ctrl(c) => write!(f, "Ctrl-{c}"),
-            Key::Null => write!(f, "Null"),
-            Key::Esc => write!(f, "Esc"),
-            Key::Tab => write!(f, "Tab"),
+            Key::Alt(c) => write!(f, "alt-{c}"),
+            Key::Ctrl(c) => write!(f, "ctrl-{c}"),
+            Key::Null => write!(f, "null"),
+            Key::Esc => write!(f, "esc"),
+            Key::Tab => write!(f, "tab"),
         }
     }
 }
@@ -212,7 +212,7 @@ impl Display for Key {
 #[allow(clippy::module_name_repetitions)]
 pub struct EventLoop {
     pub rx: mpsc::UnboundedReceiver<Event<Key>>,
-    pub abort_tx: mpsc::UnboundedSender<()>,
+    pub control_tx: mpsc::UnboundedSender<ControlEvent>,
 }
 
 struct PollFuture {
@@ -256,12 +256,21 @@ fn flush_existing_events() {
     }
 }
 
+pub enum ControlEvent {
+    /// Abort the event loop
+    Abort,
+    /// Pause the event loop
+    Pause,
+    /// Resume the event loop
+    Resume,
+}
+
 impl EventLoop {
     pub fn new(tick_rate: u64) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let tick_interval = Duration::from_secs_f64(1.0 / tick_rate as f64);
 
-        let (abort, mut abort_recv) = mpsc::unbounded_channel();
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel();
 
         flush_existing_events();
 
@@ -272,10 +281,38 @@ impl EventLoop {
 
                 tokio::select! {
                     // if we receive a message on the abort channel, stop the event loop
-                    _ = abort_recv.recv() => {
-                        tx.send(Event::Closed).unwrap_or_else(|_| warn!("Unable to send Closed event"));
-                        tx.send(Event::Tick).unwrap_or_else(|_| warn!("Unable to send Tick event"));
-                        break;
+                    Some(control_event) = control_rx.recv() => {
+                        match control_event {
+                            ControlEvent::Abort => {
+                                debug!("Received Abort control event");
+                                tx.send(Event::Closed).unwrap_or_else(|_| warn!("Unable to send Closed event"));
+                                tx.send(Event::Tick).unwrap_or_else(|_| warn!("Unable to send Tick event"));
+                                break;
+                            },
+                            ControlEvent::Pause => {
+                                debug!("Received Pause control event");
+                                // Stop processing events until resumed
+                                while let Some(event) = control_rx.recv().await {
+                                    match event {
+                                        ControlEvent::Resume => {
+                                            debug!("Received Resume control event");
+                                            // flush any leftover events
+                                            flush_existing_events();
+                                            break; // Exit pause loop
+                                        },
+                                        ControlEvent::Abort => {
+                                            debug!("Received Abort control event during Pause");
+                                            tx.send(Event::Closed).unwrap_or_else(|_| warn!("Unable to send Closed event"));
+                                            tx.send(Event::Tick).unwrap_or_else(|_| warn!("Unable to send Tick event"));
+                                            return;
+                                        },
+                                        ControlEvent::Pause => {}
+                                    }
+                                }
+                            },
+                            // these should always be captured by the pause loop
+                            ControlEvent::Resume => {},
+                        }
                     },
                     _ = signal::ctrl_c() => {
                         debug!("Received SIGINT");
@@ -319,7 +356,7 @@ impl EventLoop {
             //tx,
             rx,
             //tick_rate,
-            abort_tx: abort,
+            control_tx,
         }
     }
 }
