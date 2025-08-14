@@ -29,6 +29,16 @@ const config: Config = {
   onBrokenLinks: "throw",
   onBrokenMarkdownLinks: "warn",
 
+  headTags: [
+    {
+      tagName: "meta",
+      attributes: {
+        name: "algolia-site-verification",
+        content: "0BAA06634D0E07EF",
+      },
+    },
+  ],
+
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
@@ -108,6 +118,21 @@ const config: Config = {
       theme: prismThemes.github,
       darkTheme: prismThemes.dracula,
       additionalLanguages: ["bash", "json", "yaml", "toml", "diff"],
+    },
+    algolia: {
+      // The application ID provided by Algolia
+      appId: 'HBDRS6D3Z1',
+
+      // Public API key: it is safe to commit it
+      apiKey: 'aa52361e43418cc0cfd79fe72b73ea0b',
+
+      indexName: 'tv docs',
+
+      replaceSearchResultPathname: {
+        from: '/television/',
+        to: '/',
+      },
+
     },
   } satisfies Preset.ThemeConfig,
 
