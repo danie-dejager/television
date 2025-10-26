@@ -104,6 +104,40 @@ command = "sed '1!G;h;$!d' ${HISTFILE:-${HOME}/.bash_history}"
 
 ---
 
+### *channels*
+
+Select a television channel
+
+![tv running the channels channel](../../assets/channels/channels.png)
+**Requirements:** `tv`, `bat`
+
+**Code:** *channels.toml*
+
+```toml
+[metadata]
+name = "channels"
+description = "Select a television channel"
+requirements = [ "tv", "bat",]
+
+[source]
+command = [ "tv list-channels",]
+
+[preview]
+command = "bat -pn --color always ${XDG_CONFIG_HOME:-$HOME/.config}/television/cable/{}.toml"
+
+[keybindings]
+enter = "actions:channel-enter"
+
+[actions.channel-enter]
+description = "Enter a television channel"
+command = "tv {}"
+mode = "execute"
+
+```
+
+
+---
+
 ### *dirs*
 
 A channel to select from directories
@@ -812,6 +846,40 @@ BAT_THEME = "ansi"
 
 [ui.preview_panel]
 header = "{strip_ansi|split:\\::..2}"
+
+```
+
+
+---
+
+### *tldr*
+
+Browse and preview TLDR help pages for command-line tools
+
+![tv running the tldr channel](../../assets/channels/tldr.png)
+**Requirements:** `tldr`
+
+**Code:** *tldr.toml*
+
+```toml
+[metadata]
+name = "tldr"
+description = "Browse and preview TLDR help pages for command-line tools"
+requirements = [ "tldr",]
+
+[source]
+command = "tldr --list"
+
+[preview]
+command = "tldr '{0}'"
+
+[keybindings]
+ctrl-e = "actions:open"
+
+[actions.open]
+description = "Open the selected TLDR page"
+command = "tldr '{0}'"
+mode = "execute"
 
 ```
 

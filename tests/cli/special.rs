@@ -3,6 +3,7 @@
 //! These tests verify Television's intelligent channel detection and shell integration
 //! features, ensuring that the autocomplete prompt can automatically select appropriate
 //! channels based on command analysis.
+#![allow(clippy::borrow_interior_mutable_const)]
 
 use std::{
     io,
@@ -28,7 +29,7 @@ fn test_autocomplete_prompt_activates_channel_mode() {
 
     // Send Ctrl+C to exit
     tester.send(&ctrl('c'));
-    PtyTester::assert_exit_ok(&mut child, DEFAULT_DELAY * 2);
+    PtyTester::assert_exit_ok(&mut child, DEFAULT_DELAY);
 }
 
 /// Tests that --autocomplete-prompt conflicts with explicit channel argument.
@@ -63,7 +64,7 @@ fn test_autocomplete_prompt_with_working_directory() {
 
     // Send Ctrl+C to exit (the test is mainly to ensure no CLI parsing error)
     tester.send(&ctrl('c'));
-    PtyTester::assert_exit_ok(&mut child, DEFAULT_DELAY * 2);
+    PtyTester::assert_exit_ok(&mut child, DEFAULT_DELAY);
 }
 
 /// Tests that the `list-channels` subcommand lists available channels.
