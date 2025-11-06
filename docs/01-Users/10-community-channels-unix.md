@@ -15,8 +15,7 @@ name = "alias"
 description = "A channel to select from shell aliases"
 
 [source]
-command = "alias"
-interactive = true
+command = "$SHELL -ic 'alias'"
 output = "{split:=:0}"
 
 ```
@@ -333,6 +332,7 @@ command = "bat -n --color=always '{}'"
 [keybindings]
 shortcut = "f1"
 f12 = "actions:edit"
+ctrl-up = "actions:goto_parent_dir"
 
 [preview.env]
 BAT_THEME = "ansi"
@@ -340,6 +340,11 @@ BAT_THEME = "ansi"
 [actions.edit]
 description = "Opens the selected entries with the default editor (falls back to vim)"
 command = "${EDITOR:-vim} '{}'"
+mode = "execute"
+
+[actions.goto_parent_dir]
+description = "Re-opens tv in the parent directory"
+command = "tv files .."
 mode = "execute"
 
 ```
