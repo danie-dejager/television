@@ -133,8 +133,6 @@ impl Television {
             merged_config.channel_source_output,
             merged_config.channel_preview_command.is_some(),
         );
-        channel.load();
-
         let app_metadata = AppMetadata::new(
             env!("CARGO_PKG_VERSION").to_string(),
             std::env::current_dir()
@@ -585,7 +583,8 @@ impl Television {
 
         {
             let offset = u32::try_from(self.results_picker.offset()).unwrap();
-            let height = self.ui_state.layout.results.height.into();
+            let height =
+                self.ui_state.layout.results.height.saturating_sub(2).into(); // -2 for borders
 
             self.results_picker.entries.clear();
             self.results_picker
