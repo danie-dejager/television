@@ -1,5 +1,5 @@
 %define name television
-%define version 0.13.9
+%define version 0.13.10
 %define release 1%{?dist}
 
 Summary:  The revolution will (not) be televised
