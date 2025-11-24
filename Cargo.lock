@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "television"
-version = "0.13.10"
+version = "0.13.11"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
@@ -2061,6 +2061,7 @@ dependencies = [
  "crossterm",
  "devicons",
  "directories",
+ "fast-strip-ansi",
  "human-panic",
  "lazy-regex",
  "nucleo",
@@ -2073,6 +2074,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "signal-hook",
+ "smallvec",
  "string_pipeline",
  "tempfile",
  "tokio",

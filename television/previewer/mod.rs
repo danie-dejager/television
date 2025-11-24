@@ -8,8 +8,10 @@ use ansi_to_tui::IntoText;
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use ratatui::text::Text;
+use tokio::process::Command as TokioCommand;
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
+    task::spawn,
     time::timeout,
 };
 use tracing::debug;
@@ -48,6 +50,10 @@ impl Default for Config {
     }
 }
 
+#[allow(
+    clippy::large_enum_variant,
+    reason = "requests are almost exclusively preview jobs"
+)]
 #[derive(PartialEq, Eq)]
 pub enum Request {
     Preview(Ticket),
@@ -197,32 +203,31 @@ impl Previewer {
                         }
                         let results_handle = self.results.clone();
                         self.last_job_entry = Some(ticket.entry.clone());
-                        // try to execute the preview with a timeout
                         let preview_command = self.command.clone();
                         let cache = self.cache.clone();
                         let offset_expr = self.offset_expr.clone();
-                        match timeout(
-                            self.config.job_timeout,
-                            tokio::spawn(async move {
-                                if let Err(e) = try_preview(
-                                    &preview_command,
-                                    &offset_expr,
-                                    &ticket.entry,
-                                    &results_handle,
-                                    &cache,
-                                ) {
-                                    debug!(
-                                        "Failed to generate preview for entry '{}': {}",
-                                        ticket.entry.raw,
-                                        e
-                                    );
-                                }
-                            }),
-                        )
-                        .await
-                        {
-                            Ok(_) => {
+                        let job = spawn(try_preview(
+                            preview_command,
+                            offset_expr,
+                            ticket.entry,
+                            results_handle,
+                            cache,
+                        ));
+                        match timeout(self.config.job_timeout, job).await {
+                            Ok(Ok(Ok(()))) => {
                                 debug!("Preview job completed successfully");
+                            }
+                            Ok(Ok(Err(e))) => debug!(
+                                "Failed to generate preview for entry '{}': {}",
+                                &self.last_job_entry.unwrap().raw,
+                                e
+                            ),
+                            Ok(Err(join_err)) => {
+                                debug!(
+                                    "Preview join error for '{}': {}",
+                                    self.last_job_entry.unwrap().raw,
+                                    join_err
+                                );
                             }
                             Err(e) => {
                                 debug!("Preview job timeout: {}", e);
@@ -246,18 +251,18 @@ impl Previewer {
     }
 }
 
-pub fn try_preview(
-    command: &CommandSpec,
-    offset_expr: &Option<Template>,
-    entry: &Entry,
-    results_handle: &UnboundedSender<Preview>,
-    cache: &Option<Arc<Mutex<Cache>>>,
+pub async fn try_preview(
+    command: CommandSpec,
+    offset_expr: Option<Template>,
+    entry: Entry,
+    results_handle: UnboundedSender<Preview>,
+    cache: Option<Arc<Mutex<Cache>>>,
 ) -> Result<()> {
     debug!("Preview command: {}", command);
 
     // Check if the entry is already cached
     if let Some(cache) = &cache
-        && let Some(preview) = cache.lock().get(entry)
+        && let Some(preview) = cache.lock().get(&entry)
     {
         debug!("Preview for entry '{}' found in cache", entry.raw);
         results_handle.send(preview).with_context(
@@ -268,9 +273,10 @@ pub fn try_preview(
 
     let formatted_command = command.get_nth(0).format(&entry.raw)?;
 
-    let child =
-        shell_command(&formatted_command, command.interactive, &command.env)
-            .output()?;
+    let command =
+        shell_command(&formatted_command, command.interactive, &command.env);
+
+    let child = TokioCommand::from(command).output().await?;
 
     let preview: Preview = {
         if child.status.success() {
@@ -340,7 +346,7 @@ pub fn try_preview(
     // Cache the preview if caching is enabled
     // Note: we're caching errors as well to avoid re-running potentially expensive commands
     if let Some(cache) = &cache {
-        cache.lock().insert(entry, &preview);
+        cache.lock().insert(&entry, &preview);
         debug!("Preview for entry '{}' cached", entry.raw);
     }
     results_handle
