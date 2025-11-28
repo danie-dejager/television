@@ -1,8 +1,8 @@
 [package]
 name = "television"
-version = "0.13.11"
+version = "0.13.12"
 edition = "2024"
-description = "Cross-platform, fast and extensible general purpose fuzzy finder TUI."
+description = "A portable and hackable fuzzy finder for the terminal"
 license = "MIT"
 authors = ["Alexandre Pasmantier <alex.pasmant@gmail.com>"]
 repository = "https://github.com/alexpasmantier/television"
@@ -23,10 +23,10 @@ path = "television/lib.rs"
 
 [dependencies]
 anyhow = "1.0"
-base64 = "0.22.1"
+base64 = "0.22"
 directories = "6.0"
 devicons = "0.6"
-tokio = { version = "1.44", features = ["full"] }
+tokio = { version = "1.48", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rustc-hash = "2.1"
@@ -40,21 +40,19 @@ human-panic = "2.0"
 parking_lot = "0.12"
 nucleo = "0.5"
 toml = "0.8"
-lazy-regex = { version = "3.4.1", features = [
-  "lite",
-], default-features = false }
-ansi-to-tui = "7.0.0"
-walkdir = "2.5.0"
-string_pipeline = "0.13.0"
-ureq = "3.0.11"
-serde_json = "1.0.140"
-colored = "3.0.0"
-serde_with = "3.13.0"
-which = "8.0.0"
-clap_complete = "4.5.55"
-rayon = "1.11.0"
+lazy-regex = { version = "3.4", features = ["lite"], default-features = false }
+ansi-to-tui = "7.0"
+walkdir = "2.5"
+string_pipeline = "0.13"
+ureq = "3.0"
+serde_json = "1.0"
+colored = "3.0"
+serde_with = "3.13"
+which = "8.0"
+clap_complete = "4.5"
+rayon = "1.11"
 smallvec = "1.15"
-fast-strip-ansi = "0.11.0"
+fast-strip-ansi = "0.11"
 
 
 # target specific dependencies
@@ -135,8 +133,23 @@ from_iter_instead_of_collect = "allow"
 maintainer = "Alexandre Pasmantier <alex.pasmant@gmail.com>"
 copyright = "Copyright 2025 Alexandre Pasmantier <alex.pasmant@gmail.com>"
 extended-description = """\
-Television is a cross-platform, fast and extensible fuzzy finder TUI.
-It integrates with your shell and lets you quickly search through any kind of data source (files, git repositories, environment variables, docker images, you name it) using a fuzzy matching algorithm and is designed to be easily extensible."""
+Television is a portable and hackable fuzzy finder for the terminal.
+
+It lets you search in real time through any kind of data source (called "channels") such as:
+
+    files and directories
+    code
+    notes
+    processes
+    git repositories
+    environment variables
+    docker containers
+    ...and much more
+
+
+with support for previewing results, customizable actions and keybindings, and integration with your favorite
+shell and editor.
+"""
 section = "utils"
 priority = "optional"
 depends = "$auto"

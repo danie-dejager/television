@@ -788,6 +788,31 @@ command = "nu -c 'open $nu.history-path | lines | uniq | reverse | to text'"
 
 ---
 
+### *path*
+
+Investigate PATH contents
+
+**Requirements:** `fd`, `bat`
+
+**Code:** *path.toml*
+
+```toml
+[metadata]
+name = "path"
+description = "Investigate PATH contents"
+requirements = [ "fd", "bat",]
+
+[source]
+command = "printf '%s\n' \"$PATH\" | tr ':' '\n'"
+
+[preview]
+command = "fd -tx -d1 . \"{}\" -X printf \"%s\n\" \"{/}\" | sort -f | bat -n --color=always"
+
+```
+
+
+---
+
 ### *procs*
 
 A channel to find and manage running processes
@@ -817,6 +842,48 @@ ctrl-k = "actions:kill"
 description = "Kill the selected process (SIGKILL)"
 command = "kill -9 {split: :0}"
 mode = "execute"
+
+```
+
+
+---
+
+### *sesh*
+
+Session manager integrating tmux sessions, zoxide directories, and config paths
+
+![tv running the sesh channel](../../assets/channels/sesh.png)
+**Requirements:** `sesh`, `fd`
+
+**Code:** *sesh.toml*
+
+```toml
+[metadata]
+name = "sesh"
+description = "Session manager integrating tmux sessions, zoxide directories, and config paths"
+requirements = [ "sesh", "fd",]
+
+[source]
+command = [ "sesh list --icons", "sesh list -t --icons", "sesh list -c --icons", "sesh list -z --icons", "fd -H -d 2 -t d -E .Trash . ~",]
+ansi = true
+output = "{strip_ansi|split: :1}"
+
+[preview]
+command = "sesh preview '{strip_ansi|split: :1}'"
+
+[keybindings]
+enter = "actions:connect"
+ctrl-d = [ "actions:kill_session", "reload_source",]
+
+[actions.connect]
+description = "Connect to selected session"
+command = "sesh connect '{strip_ansi|split: :1}'"
+mode = "execute"
+
+[actions.kill_session]
+description = "Kill selected tmux session (press Ctrl+r to reload)"
+command = "tmux kill-session -t '{strip_ansi|split: :1}'"
+mode = "fork"
 
 ```
 
