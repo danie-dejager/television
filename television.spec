@@ -11,6 +11,7 @@ URL:      https://github.com/alexpasmantier/television
 Source0:  https://github.com/alexpasmantier/television/archive/refs/tags/%{version}.tar.gz
 
 %define debug_package %{nil}
+%undefine _package_note_file
 
 BuildRequires: curl
 BuildRequires: gcc
