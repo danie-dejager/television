@@ -8,7 +8,7 @@ use crate::{
         indices::truncate_highlighted_string,
         strings::{
             ReplaceNonPrintableConfig, make_result_item_printable,
-            replace_non_printable,
+            replace_non_printable_bulk,
         },
     },
 };
@@ -135,10 +135,10 @@ fn build_entry_spans<T: ResultItem + ?Sized>(
     let (mut entry_name, mut match_ranges) = make_result_item_printable(item);
 
     // Truncate if too long.
-    if UnicodeWidthStr::width(entry_name.as_str()) > max_width as usize {
+    if UnicodeWidthStr::width(entry_name.as_ref()) > max_width as usize {
         let (name, ranges) =
             truncate_highlighted_string(&entry_name, &match_ranges, max_width);
-        entry_name = name;
+        entry_name = std::borrow::Cow::Owned(name);
         match_ranges = ranges;
     }
 
@@ -153,7 +153,6 @@ fn build_entry_spans<T: ResultItem + ?Sized>(
         let start = start as usize;
         let end = end as usize;
         if idx < start {
-            // PERF: spans actually accept copy on write
             let text: String =
                 chars.iter().skip(idx).take(start - idx).collect();
             if !text.is_empty() {
@@ -221,7 +220,7 @@ fn build_entry_spans_ansi<T: ResultItem + ?Sized>(
 ) -> Vec<Span<'_>> {
     let text = item.raw();
     let match_ranges = item.match_ranges().unwrap_or(&[]);
-    let parsed = text.into_text().unwrap();
+    let parsed = text.to_text().unwrap();
     let spans = &parsed.lines[0].spans;
 
     // If there are no ANSI codes, fall back to the simple span builder
@@ -262,11 +261,12 @@ fn build_entry_spans_ansi<T: ResultItem + ?Sized>(
                         .collect();
                     if !s.is_empty() {
                         highlighted_spans.push(Span::styled(
-                            replace_non_printable(
-                                s.as_bytes(),
+                            replace_non_printable_bulk(
+                                &s,
                                 &ReplaceNonPrintableConfig::default(),
                             )
-                            .0,
+                            .0
+                            .into_owned(),
                             span.style,
                         ));
                     }
@@ -280,11 +280,12 @@ fn build_entry_spans_ansi<T: ResultItem + ?Sized>(
                         .collect();
                     if !s.is_empty() {
                         highlighted_spans.push(Span::styled(
-                            replace_non_printable(
-                                s.as_bytes(),
+                            replace_non_printable_bulk(
+                                &s,
                                 &ReplaceNonPrintableConfig::default(),
                             )
-                            .0,
+                            .0
+                            .into_owned(),
                             span.style.fg(match_fg),
                         ));
                     }
@@ -294,11 +295,12 @@ fn build_entry_spans_ansi<T: ResultItem + ?Sized>(
                 let s: String = span.content.chars().skip(cursor).collect();
                 if !s.is_empty() {
                     highlighted_spans.push(Span::styled(
-                        replace_non_printable(
-                            s.as_bytes(),
+                        replace_non_printable_bulk(
+                            &s,
                             &ReplaceNonPrintableConfig::default(),
                         )
-                        .0,
+                        .0
+                        .into_owned(),
                         span.style,
                     ));
                 }

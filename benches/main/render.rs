@@ -1,7 +1,7 @@
 use criterion::criterion_group;
 use criterion::{Criterion, black_box};
 use television::channels::prototypes::ChannelPrototype;
-use television::config::layers::LayeredConfig;
+use television::config::layers::ConfigLayers;
 use television::{
     cable::Cable,
     cli::PostProcessedCli,
@@ -27,7 +27,7 @@ pub fn render(c: &mut Criterion) {
     let mut terminal = Terminal::new(backend).unwrap();
     let (tx, _) = tokio::sync::mpsc::unbounded_channel();
     let channel_prototype = cable.get_channel("files");
-    let layered_config = LayeredConfig::new(
+    let layered_config = ConfigLayers::new(
         config,
         channel_prototype.clone(),
         PostProcessedCli::default(),
@@ -45,7 +45,7 @@ pub fn render(c: &mut Criterion) {
         b.iter(|| {
             let ctx = black_box(Box::new(tv.dump_context()));
             television::draw::draw(
-                black_box(&ctx),
+                black_box(*ctx),
                 black_box(&mut terminal.get_frame()),
                 black_box(Rect::new(0, 0, width, height)),
             )

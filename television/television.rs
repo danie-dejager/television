@@ -2,14 +2,14 @@ use crate::{
     action::Action,
     cable::Cable,
     channels::{
-        channel::Channel as CableChannel,
+        channel::ChannelKind as CableChannel,
         entry::Entry,
         prototypes::{ChannelPrototype, CommandSpec, Template},
         remote_control::{CableEntry, RemoteControl},
     },
     config::{
         Theme,
-        layers::{LayeredConfig, MergedConfig},
+        layers::{ConfigLayers, MergedConfig},
     },
     draw::{ChannelState, Ctx, TvState},
     errors::os_error_exit,
@@ -26,7 +26,9 @@ use crate::{
         spinner::{Spinner, SpinnerState},
     },
     utils::{
-        clipboard::CLIPBOARD, metadata::AppMetadata, strings::EMPTY_STRING,
+        clipboard::CLIPBOARD,
+        metadata::AppMetadata,
+        strings::{EMPTY_STRING, SPACE},
     },
 };
 use anyhow::Result;
@@ -62,7 +64,7 @@ pub enum MatchingMode {
 
 pub struct Television {
     action_tx: UnboundedSender<Action>,
-    pub layered_config: LayeredConfig,
+    pub layered_config: ConfigLayers,
     pub merged_config: MergedConfig,
     pub channel: CableChannel,
     pub remote_control: Option<RemoteControl>,
@@ -81,7 +83,6 @@ pub struct Television {
     pub colorscheme: Arc<Colorscheme>,
     pub ticks: u64,
     pub ui_state: UiState,
-    pub current_command_index: usize,
 }
 
 impl Television {
@@ -90,13 +91,13 @@ impl Television {
     #[must_use]
     pub fn new(
         action_tx: UnboundedSender<Action>,
-        layered_config: LayeredConfig,
+        layered_config: ConfigLayers,
         cable_channels: Cable,
     ) -> Self {
         let merged_config = {
             // this is to keep the outer merged config immutable
             let mut m = layered_config.merge();
-            m.input_map.merge_key_bindings(
+            m.input_map.merge_globals_with(
                 &cable_channels.get_channels_shortcut_keybindings(),
             );
             m
@@ -122,6 +123,8 @@ impl Television {
                     command,
                     merged_config.channel_preview_cached,
                     merged_config.channel_preview_offset.clone(),
+                    merged_config.preview_panel_header.clone(),
+                    merged_config.preview_panel_footer.clone(),
                 )
             });
 
@@ -157,8 +160,11 @@ impl Television {
         channel.find(&pattern);
         let spinner = Spinner::default();
 
-        let preview_state =
-            PreviewState::new(channel.supports_preview, Preview::default(), 0);
+        let preview_state = PreviewState::new(
+            channel.supports_preview(),
+            Preview::default(),
+            0,
+        );
 
         let remote_control = if merged_config.remote_disabled {
             None
@@ -189,7 +195,6 @@ impl Television {
             colorscheme: Arc::new(colorscheme),
             ticks: 0,
             ui_state: UiState::default(),
-            current_command_index: 0,
         }
     }
 
@@ -197,20 +202,25 @@ impl Television {
         command: &CommandSpec,
         cached: bool,
         offset_expr: Option<Template>,
+        title_template: Option<Template>,
+        footer_template: Option<Template>,
     ) -> (UnboundedSender<PreviewRequest>, UnboundedReceiver<Preview>) {
-        let (pv_request_tx, pv_request_rx) = unbounded_channel();
-        let (pv_preview_tx, pv_preview_rx) = unbounded_channel();
+        let (preview_requests_tx, preview_requests_rx) = unbounded_channel();
+        let (preview_results_tx, preview_results_rx) = unbounded_channel();
         let previewer = Previewer::new(
             command,
             offset_expr,
+            title_template,
+            footer_template,
             // NOTE: this could be a per-channel configuration option in the future
             PreviewerConfig::default(),
-            pv_request_rx,
-            pv_preview_tx,
+            preview_requests_rx,
+            preview_requests_tx.clone(),
+            preview_results_tx,
             cached,
         );
         tokio::spawn(async move { previewer.run().await });
-        (pv_request_tx, pv_preview_rx)
+        (preview_requests_tx, preview_results_rx)
     }
 
     pub fn update_ui_state(&mut self, ui_state: UiState) {
@@ -268,7 +278,7 @@ impl Television {
         self.merged_config = self.layered_config.merge();
         // merge channel shortcuts if remote control is enabled
         if let Some(rc) = &mut self.remote_control {
-            self.merged_config.input_map.merge_key_bindings(
+            self.merged_config.input_map.merge_globals_with(
                 &rc.cable_channels.get_channels_shortcut_keybindings(),
             );
         }
@@ -280,13 +290,14 @@ impl Television {
                         command,
                         self.merged_config.channel_preview_cached,
                         self.merged_config.channel_preview_offset.clone(),
+                        self.merged_config.preview_panel_header.clone(),
+                        self.merged_config.preview_panel_footer.clone(),
                     )
                 },
             );
         // Set preview state enabled based on both channel capability and UI configuration
         self.preview_state.enabled = channel_prototype.preview.is_some()
             && !self.merged_config.preview_panel_hidden;
-        self.current_command_index = 0;
         self.channel = CableChannel::new(
             self.merged_config.channel_source_command.clone(),
             self.merged_config.channel_source_entry_delimiter,
@@ -456,7 +467,7 @@ const FIRST_TICKS_TO_RENDER: u64 = 10;
 /// Render every N ticks.
 ///
 /// Without any user input, this is the default rendering interval.
-const RENDERING_INTERVAL: u64 = 10;
+const RENDERING_INTERVAL: u64 = 25;
 /// Render every N ticks if the channel is currently running.
 ///
 /// This ensures that the UI stays in sync with the channel
@@ -504,57 +515,41 @@ impl Television {
                     | Action::ToggleOrientation
                     | Action::CopyEntryToClipboard
                     | Action::CycleSources
+                    | Action::CyclePreviews
                     | Action::ReloadSource
             ))
             // We want to avoid too much rendering while the channel is reloading
             // to prevent UI flickering.
             && !self
                 .channel
-                .reloading
-                .load(std::sync::atomic::Ordering::Relaxed)
+                .reloading()
     }
 
     pub fn update_preview_state(
         &mut self,
         selected_entry: &Option<Entry>,
     ) -> Result<()> {
-        if selected_entry.is_none() {
+        if let Some(selected_entry) = selected_entry {
+            if let Some((sender, receiver)) = &mut self.preview_handles {
+                // send a preview request if the preview state is out of sync
+                // with the currently selected entry
+                if selected_entry.raw != self.preview_state.preview.entry_raw {
+                    sender.send(PreviewRequest::Preview(Ticket::new(
+                        selected_entry.clone(),
+                    )))?;
+                }
+                // try to receive a preview update
+                if let Ok(preview) = receiver.try_recv() {
+                    let initial_scroll = Self::calculate_scroll(
+                        &preview,
+                        self.ui_state.layout.preview_window.as_ref(),
+                    );
+                    self.preview_state.update(preview, initial_scroll);
+                    self.action_tx.send(Action::Render)?;
+                }
+            }
+        } else {
             self.preview_state.reset();
-            return Ok(());
-        }
-        if let Some((sender, receiver)) = &mut self.preview_handles {
-            // send a preview request if the selected entry has changed
-            if *selected_entry != self.currently_selected {
-                sender.send(PreviewRequest::Preview(Ticket::new(
-                    selected_entry.as_ref().unwrap().clone(),
-                )))?;
-            }
-            // try to receive a preview update
-            let entry = selected_entry.as_ref().unwrap();
-            if let Ok(mut preview) = receiver.try_recv() {
-                if let Some(template) =
-                    &self.merged_config.preview_panel_header
-                {
-                    preview.title = template
-                        .format(&entry.raw)
-                        .unwrap_or_else(|_| entry.raw.clone());
-                }
-
-                if let Some(template) =
-                    &self.merged_config.preview_panel_footer
-                {
-                    preview.footer = template
-                        .format(&entry.raw)
-                        .unwrap_or_else(|_| String::new());
-                }
-
-                let initial_scroll = Self::calculate_scroll(
-                    &preview,
-                    self.ui_state.layout.preview_window.as_ref(),
-                );
-                self.preview_state.update(preview, initial_scroll);
-                self.action_tx.send(Action::Render)?;
-            }
         }
         Ok(())
     }
@@ -564,7 +559,7 @@ impl Television {
         preview_window: Option<&Rect>,
     ) -> u16 {
         if let Some(window) = preview_window
-            && let Some(target_line) = preview.line_number
+            && let Some(target_line) = preview.target_line
         {
             // this places the target line 3 lines above the center of the preview window
             return target_line
@@ -690,7 +685,7 @@ impl Television {
                 .iter()
                 .map(|e| e.raw.clone())
                 .collect::<Vec<_>>()
-                .join(" ");
+                .join(SPACE);
 
             tokio::spawn(CLIPBOARD.set(copied_string));
         }
@@ -700,6 +695,16 @@ impl Television {
         if self.mode == Mode::Channel {
             self.channel.cycle_sources();
             self.reset_picker_selection();
+        }
+    }
+
+    pub fn cycle_previews(&mut self) {
+        if self.mode == Mode::Channel
+            && let Some((sender, _)) = &self.preview_handles
+        {
+            sender.send(PreviewRequest::CycleCommand).expect(
+                "Failed to send cycle preview command request to previewer",
+            );
         }
     }
 
@@ -778,6 +783,9 @@ impl Television {
             }
             Action::CycleSources => {
                 self.cycle_sources();
+            }
+            Action::CyclePreviews => {
+                self.cycle_previews();
             }
             Action::ReloadSource | Action::WatchTimer => {
                 self.handle_reload_source();
@@ -888,12 +896,12 @@ impl Television {
 #[cfg(test)]
 mod test {
     use crate::{
-        action::Action,
+        action::{Action, Actions},
         cable::Cable,
         cli::{ChannelCli, GlobalCli},
-        config::layers::LayeredConfig,
+        config::layers::ConfigLayers,
         event::Key,
-        television::{MatchingMode, Television},
+        television::{MatchingMode, Mode, Television},
     };
 
     #[test]
@@ -931,7 +939,7 @@ mod test {
             },
         };
         let layered_config =
-            LayeredConfig::new(config, prototype, cli_args.clone());
+            ConfigLayers::new(config, prototype, cli_args.clone());
         let tv = Television::new(
             tokio::sync::mpsc::unbounded_channel().0,
             layered_config,
@@ -967,7 +975,7 @@ mod test {
             .unwrap();
 
         let cli_args = PostProcessedCli::default();
-        let layered_config = LayeredConfig::new(
+        let layered_config = ConfigLayers::new(
             config.clone(),
             prototype.clone(),
             cli_args.clone(),
@@ -981,8 +989,8 @@ mod test {
         assert_eq!(
             tv.merged_config
                 .input_map
-                .get_action_for_key(&Key::Ctrl('j')),
-            Some(Action::SelectNextEntry),
+                .get_actions_for_key(&Key::Ctrl('j'), &Mode::Channel),
+            Some(&Actions::single(Action::SelectNextEntry)),
         );
     }
 }

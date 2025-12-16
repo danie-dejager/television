@@ -1,7 +1,8 @@
 use crate::event::Key;
+use crate::utils::strings::SPACE;
 use crate::{
     action::{Action, Actions},
-    config::{KeyBindings, layers::MergedConfig},
+    config::{Keybindings, layers::MergedConfig},
     screen::colors::Colorscheme,
     television::Mode,
     utils::strings::to_title_case,
@@ -91,6 +92,7 @@ fn is_action_relevant_for_mode(action: &Action, mode: Mode) -> bool {
                 | Action::CopyEntryToClipboard
                 | Action::ReloadSource
                 | Action::CycleSources
+                | Action::CyclePreviews
                 | Action::SelectPrevHistory
                 | Action::SelectNextHistory
                 // UI toggles - global
@@ -159,7 +161,7 @@ fn is_action_relevant_for_mode(action: &Action, mode: Mode) -> bool {
 /// Adds keybinding lines for specific keys to the given lines vector
 fn add_keybinding_lines_for_keys(
     lines: &mut Vec<Line<'static>>,
-    keybindings: &KeyBindings,
+    keybindings: &Keybindings,
     mode: Mode,
     colorscheme: &Colorscheme,
     category_name: &str,
@@ -281,9 +283,10 @@ fn generate_help_content(
         &mut lines,
         &config
             .input_map
-            .key_actions
+            .global_keybindings
             .iter()
             .map(|(key, actions)| (*key, actions.first().unwrap().clone()))
+            .collect::<Vec<_>>()
             .into(),
         mode,
         colorscheme,
@@ -292,12 +295,16 @@ fn generate_help_content(
 
     // Check if we have external actions before adding the section
     let has_external_actions =
-        config.input_map.key_actions.iter().any(|(_, actions)| {
-            actions
-                .as_slice()
-                .iter()
-                .any(|a| matches!(a, Action::ExternalAction(_)))
-        });
+        config
+            .input_map
+            .global_keybindings
+            .iter()
+            .any(|(_, actions)| {
+                actions
+                    .as_slice()
+                    .iter()
+                    .any(|a| matches!(a, Action::ExternalAction(_)))
+            });
 
     if has_external_actions {
         lines.push(Line::from(""));
@@ -311,7 +318,7 @@ fn generate_help_content(
 
         add_actions_keybindings_section(
             &mut lines,
-            &config.input_map.key_actions,
+            &config.input_map.global_keybindings,
             colorscheme,
             mode,
         );
@@ -339,7 +346,7 @@ fn create_compact_keybinding_line(
             format!("{}:", action),
             Style::default().fg(colorscheme.help.metadata_field_name_fg),
         ),
-        Span::raw(" "), // Space between action and key
+        Span::raw(SPACE), // Space between action and key
         Span::styled(key.to_string(), Style::default().fg(key_color).bold()),
     ])
 }
@@ -354,7 +361,7 @@ fn create_external_action_line(
             format!("{}:", key),
             Style::default().fg(colorscheme.mode.channel).bold(),
         ),
-        Span::raw(" "), // Space between key and actions
+        Span::raw(SPACE), // Space between key and actions
         Span::styled(
             actions.to_string(),
             Style::default().fg(colorscheme.help.metadata_field_name_fg),

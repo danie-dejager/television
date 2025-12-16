@@ -949,6 +949,29 @@ mode = "fork"
 
 ---
 
+### *ssh-hosts*
+
+A channel to select hosts from your SSH config
+
+![tv running the ssh-hosts channel](../../assets/channels/ssh-hosts.png)
+**Requirements:** `grep`, `tr`, `cut`
+
+**Code:** *ssh-hosts.toml*
+
+```toml
+[metadata]
+name = "ssh-hosts"
+description = "A channel to select hosts from your SSH config"
+requirements = [ "grep", "tr", "cut",]
+
+[source]
+command = "grep -E '^Host(name)? ' $HOME/.ssh/config | tr -s ' ' | cut -d' ' -f2- | tr ' ' '\n' | grep -v '^$'"
+
+```
+
+
+---
+
 ### *text*
 
 A channel to find and select text from files
@@ -1011,6 +1034,53 @@ ctrl-e = "actions:open"
 description = "Open the selected TLDR page"
 command = "tldr '{0}'"
 mode = "execute"
+
+```
+
+
+---
+
+### *unicode*
+
+Search and insert unicode characters
+
+The UnicodeData.txt file is included by many packages.
+
+In addition to:
+
+Alpine Linux: unicode-character-database
+Arch: unicode-character-database
+Debian/Ubuntu: unicode-data
+Fedora / RHEL / CentOS unicode-ucd
+Gentoo: app-i18n/unicode-data
+NixOS: unicode/unicode-data
+openSUSE: unicode-ucd
+
+UnicodData.txt may also aleady be provided by:
+
+1) Many java packages
+2) Latex packages
+3) Still others
+
+It may in some cases be necessary to alter UNICODE_FILE below.
+
+
+
+![tv running the unicode channel](../../assets/channels/unicode.png)
+**Requirements:** `awk`, `perl`
+
+**Code:** *unicode.toml*
+
+```toml
+[metadata]
+name = "unicode"
+description = "Search and insert unicode characters\n\nThe UnicodeData.txt file is included by many packages.\n\nIn addition to:\n\nAlpine Linux: unicode-character-database\nArch: unicode-character-database\nDebian/Ubuntu: unicode-data\nFedora / RHEL / CentOS unicode-ucd\nGentoo: app-i18n/unicode-data\nNixOS: unicode/unicode-data\nopenSUSE: unicode-ucd\n\nUnicodData.txt may also aleady be provided by:\n\n1) Many java packages\n2) Latex packages\n3) Still others\n\nIt may in some cases be necessary to alter UNICODE_FILE below.\n\n"
+requirements = [ "awk", "perl",]
+
+[source]
+command = "UNICODE_FILE=\"/usr/share/unicode/ucd/UnicodeData.txt\"\nawk -F';' '\n  $2 !~ /^</ { print $1 \"|\" $2 }\n' \"$UNICODE_FILE\" | perl -CS -F'\\|' -lane '\n    $code = $F[0];\n    $desc = $F[1];\n    $char = chr(hex($code));\n    print \"U+$code|$char|$desc\" if $char =~ /\\p{Print}/;\n'\n"
+display = "{split:|:0}    {split:|:1}    {split:|:2}"
+output = "{split:|:1}"
 
 ```
 

@@ -1,11 +1,11 @@
 use crate::{
-    action::Action,
+    action::{Action, CUSTOM_ACTION_PREFIX},
     channels::prototypes::{
         ActionSpec, BinaryRequirement, ChannelPrototype, CommandSpec, Template,
     },
     cli::{ChannelCli, GlobalCli, PostProcessedCli},
     config::{
-        Config,
+        Config, Keybindings, merge_keybindings,
         ui::{BorderType, Padding, ThemeOverrides},
     },
     keymap::InputMap,
@@ -14,7 +14,9 @@ use crate::{
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
-pub struct LayeredConfig {
+/// Represents the different layers of configuration that make up the final
+/// merged configuration used by the application.
+pub struct ConfigLayers {
     /// The base configuration that is loaded from the config file.
     base_config: Config,
     /// The channel prototype that is currently loaded.
@@ -28,7 +30,7 @@ pub struct LayeredConfig {
     global_cli: GlobalCli,
 }
 
-impl LayeredConfig {
+impl ConfigLayers {
     pub fn new(
         base_config: Config,
         channel: ChannelPrototype,
@@ -42,12 +44,14 @@ impl LayeredConfig {
         }
     }
 
+    /// Update the current channel prototype and reset channel CLI options.
     pub fn update_channel(&mut self, channel: ChannelPrototype) {
         self.channel = channel;
-        // Reset channel CLI options to defaults
+        // Reset channel-specific CLI options to defaults
         self.channel_cli = ChannelCli::default();
     }
 
+    /// Merges the different configuration layers into a single `MergedConfig`.
     pub fn merge(&self) -> MergedConfig {
         // CLI-only fields
         let config_file = self.global_cli.config_file.clone();
@@ -397,35 +401,41 @@ impl LayeredConfig {
         let global_history = self.global_cli.global_history
             || self.channel.history.global_mode.unwrap_or_default()
             || self.base_config.application.global_history;
-        let keybindings = {
-            let mut merged_bindings = self.base_config.keybindings.clone();
-            // Merge channel-specific keybindings
-            if let Some(channel_bindings) = &self.channel.keybindings {
-                merged_bindings
-                    .extend(channel_bindings.bindings.inner.clone());
-            }
-            // Merge CLI keybindings
-            if let Some(cli_bindings) = &self.channel_cli.keybindings {
-                merged_bindings.extend(cli_bindings.inner.clone());
-            }
-            merged_bindings
-        };
-        let event_bindings = self.base_config.events.clone();
 
-        // Validate that all external actions referenced in keybindings exist in channel actions
-        for actions in keybindings.inner.values() {
-            for action in actions.as_slice() {
-                if let Action::ExternalAction(action_name) = action
-                    && !channel_actions.contains_key(action_name)
-                {
-                    eprintln!(
-                        "Action '{}' referenced in keybinding not found in actions section",
-                        action_name
-                    );
-                    std::process::exit(1);
+        // Do we have any channel-specific keybindings?
+        let mut channel_keybindings = Keybindings::default();
+        if let Some(channel_bindings) = &self.channel.keybindings {
+            channel_keybindings = channel_bindings.bindings.clone();
+        }
+        if let Some(cli_bindings) = &self.channel_cli.keybindings {
+            channel_keybindings =
+                merge_keybindings(channel_keybindings, cli_bindings);
+        }
+
+        // Validate that all external actions referenced in channel keybindings exist
+        if let Some(channel_bindings) = &self.channel.keybindings {
+            for (_, actions) in channel_bindings.bindings.iter() {
+                for action in actions.as_slice() {
+                    if let Action::ExternalAction(custom_with_prefix) = action
+                        && !channel_actions.contains_key(
+                            custom_with_prefix
+                                .trim_start_matches(CUSTOM_ACTION_PREFIX),
+                        )
+                    {
+                        eprintln!(
+                            "Action '{}' referenced in keybinding not found in actions section.",
+                            custom_with_prefix
+                        );
+                        std::process::exit(1);
+                    }
                 }
             }
         }
+
+        let input_map = InputMap::new(
+            self.base_config.keybindings.clone(),
+            channel_keybindings,
+        );
 
         MergedConfig {
             // General
@@ -446,7 +456,7 @@ impl LayeredConfig {
             input,
 
             // Bindings
-            input_map: InputMap::from((&keybindings, &event_bindings)),
+            input_map,
 
             // UI
             ui_scale,
@@ -516,6 +526,8 @@ impl LayeredConfig {
     }
 }
 
+/// The final merged configuration used by the application, combining
+/// settings from the base config, channel prototype, and CLI options.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct MergedConfig {

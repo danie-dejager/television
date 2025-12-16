@@ -5,13 +5,14 @@ use crate::previewer::Preview;
 #[derive(Debug, Clone, Default)]
 pub struct PreviewState {
     pub enabled: bool,
+    // FIXME: this should probably be an Arc<Preview>
     pub preview: Preview,
     pub scroll: u16,
 }
 
 const PREVIEW_MIN_SCROLL_LINES: u16 = 3;
 pub const ANSI_BEFORE_CONTEXT_SIZE: u16 = 3;
-const ANSI_CONTEXT_SIZE: u16 = 500;
+const ANSI_CONTEXT_SIZE: u16 = 150;
 
 impl PreviewState {
     pub fn new(enabled: bool, preview: Preview, scroll: u16) -> Self {
@@ -43,7 +44,7 @@ impl PreviewState {
         if self.preview.title != preview.title
             || self.preview.content != preview.content
             || self.preview.footer != preview.footer
-            || self.preview.line_number != preview.line_number
+            || self.preview.target_line != preview.target_line
             || self.scroll != scroll
         {
             self.preview = preview;
@@ -51,10 +52,13 @@ impl PreviewState {
         }
     }
 
+    // FIXME: does this really need to happen for every render?
+    // What if we did it only when the preview content or scroll changes?
     pub fn for_render_context(&self) -> Self {
         let num_skipped_lines =
             self.scroll.saturating_sub(ANSI_BEFORE_CONTEXT_SIZE);
 
+        // PERF: this allocates every time
         let cropped_content = self
             .preview
             .content
@@ -67,12 +71,14 @@ impl PreviewState {
 
         let adjusted_line_number = self
             .preview
-            .line_number
+            .target_line
             .map(|line| line.saturating_sub(num_skipped_lines));
 
         PreviewState::new(
             self.enabled,
+            // PERF: this allocates every time
             Preview::new(
+                self.preview.entry_raw.clone(),
                 &self.preview.title,
                 Text::from(cropped_content),
                 adjusted_line_number,

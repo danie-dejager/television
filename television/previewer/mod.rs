@@ -25,7 +25,8 @@ use crate::{
     utils::{
         command::shell_command,
         strings::{
-            EMPTY_STRING, ReplaceNonPrintableConfig, replace_non_printable,
+            EMPTY_STRING, ReplaceNonPrintableConfig,
+            replace_non_printable_bulk,
         },
     },
 };
@@ -58,6 +59,7 @@ impl Default for Config {
 pub enum Request {
     Preview(Ticket),
     Shutdown,
+    CycleCommand,
 }
 
 impl PartialOrd for Request {
@@ -69,9 +71,9 @@ impl PartialOrd for Request {
 impl Ord for Request {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            // Shutdown signals always have priority
-            (Self::Shutdown, _) => Ordering::Greater,
-            (_, Self::Shutdown) => Ordering::Less,
+            // Shutdown/Cycle signals always have priority
+            (Self::Shutdown | Self::CycleCommand, _) => Ordering::Greater,
+            (_, Self::Shutdown | Self::CycleCommand) => Ordering::Less,
             // Otherwise fall back to ticket age comparison
             (Self::Preview(t1), Self::Preview(t2)) => t1.cmp(t2),
         }
@@ -111,13 +113,14 @@ impl Ticket {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Preview {
+    pub entry_raw: String,
     pub title: String,
     // NOTE: this does couple the previewer with ratatui but allows
     // to only parse ansi text once and reuse it in the UI.
     pub content: Text<'static>,
-    pub line_number: Option<u16>,
+    pub target_line: Option<u16>,
     pub total_lines: u16,
-    pub footer: String,
+    pub footer: Option<String>,
 }
 
 const DEFAULT_PREVIEW_TITLE: &str = "Select an entry to preview";
@@ -125,27 +128,30 @@ const DEFAULT_PREVIEW_TITLE: &str = "Select an entry to preview";
 impl Default for Preview {
     fn default() -> Self {
         Self {
+            entry_raw: EMPTY_STRING.to_string(),
             title: DEFAULT_PREVIEW_TITLE.to_string(),
             content: Text::from(EMPTY_STRING),
-            line_number: None,
+            target_line: None,
             total_lines: 1,
-            footer: String::new(),
+            footer: None,
         }
     }
 }
 
 impl Preview {
     fn new(
+        entry_raw: String,
         title: &str,
-        content: Text<'static>,
+        displayable_content: Text<'static>,
         line_number: Option<u16>,
         total_lines: u16,
-        footer: String,
+        footer: Option<String>,
     ) -> Self {
         Self {
+            entry_raw,
             title: title.to_string(),
-            content,
-            line_number,
+            content: displayable_content,
+            target_line: line_number,
             total_lines,
             footer,
         }
@@ -154,22 +160,30 @@ impl Preview {
 
 pub struct Previewer {
     config: Config,
-    // FIXME: maybe use a bounded channel here with a single slot
-    requests: UnboundedReceiver<Request>,
+    requests_tx: UnboundedSender<Request>,
+    requests_rx: UnboundedReceiver<Request>,
     last_job_entry: Option<Entry>,
     command: CommandSpec,
+    /// The current cycle index for commands with multiple variants.
+    cycle_index: usize,
+    title_template: Option<Template>,
+    footer_template: Option<Template>,
     offset_expr: Option<Template>,
     results: UnboundedSender<Preview>,
     cache: Option<Arc<Mutex<Cache>>>,
 }
 
 impl Previewer {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         command: &CommandSpec,
         offset_expr: Option<Template>,
+        title_template: Option<Template>,
+        footer_template: Option<Template>,
         config: Config,
-        receiver: UnboundedReceiver<Request>,
-        sender: UnboundedSender<Preview>,
+        requests_rx: UnboundedReceiver<Request>,
+        requests_tx: UnboundedSender<Request>,
+        results_tx: UnboundedSender<Preview>,
         cache: bool,
     ) -> Self {
         let cache = if cache {
@@ -179,11 +193,15 @@ impl Previewer {
         };
         Self {
             config,
-            requests: receiver,
+            requests_tx,
+            requests_rx,
             last_job_entry: None,
             command: command.clone(),
+            cycle_index: 0,
+            title_template,
+            footer_template,
             offset_expr,
-            results: sender,
+            results: results_tx,
             cache,
         }
     }
@@ -191,7 +209,7 @@ impl Previewer {
     pub async fn run(mut self) {
         let mut buffer = Vec::with_capacity(32);
         loop {
-            let num = self.requests.recv_many(&mut buffer, 32).await;
+            let num = self.requests_rx.recv_many(&mut buffer, 32).await;
             if num > 0 {
                 debug!("Previewer received {num} request(s)!");
                 // only keep the newest request
@@ -206,8 +224,13 @@ impl Previewer {
                         let preview_command = self.command.clone();
                         let cache = self.cache.clone();
                         let offset_expr = self.offset_expr.clone();
+                        let title_template = self.title_template.clone();
+                        let footer_template = self.footer_template.clone();
                         let job = spawn(try_preview(
                             preview_command,
+                            self.cycle_index,
+                            title_template,
+                            footer_template,
                             offset_expr,
                             ticket.entry,
                             results_handle,
@@ -219,13 +242,13 @@ impl Previewer {
                             }
                             Ok(Ok(Err(e))) => debug!(
                                 "Failed to generate preview for entry '{}': {}",
-                                &self.last_job_entry.unwrap().raw,
+                                &self.last_job_entry.clone().unwrap().raw,
                                 e
                             ),
                             Ok(Err(join_err)) => {
                                 debug!(
                                     "Preview join error for '{}': {}",
-                                    self.last_job_entry.unwrap().raw,
+                                    self.last_job_entry.clone().unwrap().raw,
                                     join_err
                                 );
                             }
@@ -233,6 +256,10 @@ impl Previewer {
                                 debug!("Preview job timeout: {}", e);
                             }
                         }
+                    }
+                    Request::CycleCommand => {
+                        debug!("Cycling preview command.");
+                        self.cycle_command();
                     }
                     Request::Shutdown => {
                         debug!(
@@ -249,10 +276,29 @@ impl Previewer {
             }
         }
     }
+
+    pub fn cycle_command(&mut self) {
+        self.cycle_index = (self.cycle_index + 1) % self.command.inner.len();
+        // we also need to invalidate the cache since the command has changed
+        if let Some(cache) = &self.cache {
+            cache.lock().clear();
+            debug!("Preview cache cleared");
+        }
+        // re-request preview for the last entry if any
+        if let Some(entry) = &self.last_job_entry {
+            let _ = self
+                .requests_tx
+                .send(Request::Preview(Ticket::new(entry.clone())));
+        }
+    }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn try_preview(
     command: CommandSpec,
+    cycle_index: usize,
+    title_template: Option<Template>,
+    footer_template: Option<Template>,
     offset_expr: Option<Template>,
     entry: Entry,
     results_handle: UnboundedSender<Preview>,
@@ -271,7 +317,7 @@ pub async fn try_preview(
         return Ok(());
     }
 
-    let formatted_command = command.get_nth(0).format(&entry.raw)?;
+    let formatted_command = command.get_nth(cycle_index).format(&entry.raw)?;
 
     let command =
         shell_command(&formatted_command, command.interactive, &command.env);
@@ -288,11 +334,12 @@ pub async fn try_preview(
             text.lines.iter_mut().for_each(|line| {
                 // replace non-printable characters
                 line.spans.iter_mut().for_each(|span| {
-                    span.content = replace_non_printable(
-                        &span.content.bytes().collect::<Vec<_>>(),
+                    span.content = replace_non_printable_bulk(
+                        &span.content,
                         &ReplaceNonPrintableConfig::default(),
                     )
                     .0
+                    .into_owned()
                     .into();
                 });
             });
@@ -306,12 +353,26 @@ pub async fn try_preview(
                 None
             };
 
+            // compute title
+            let title = if let Some(title_template) = title_template {
+                title_template.format(&entry.raw)?
+            } else {
+                entry.display().to_string()
+            };
+            // compute footer
+            let footer = if let Some(footer_template) = footer_template {
+                Some(footer_template.format(&entry.raw)?)
+            } else {
+                None
+            };
+
             Preview::new(
-                entry.display(),
+                entry.raw.clone(),
+                &title,
                 text,
                 line_number,
                 total_lines,
-                String::new(),
+                footer,
             )
         } else {
             let mut text = child
@@ -322,11 +383,12 @@ pub async fn try_preview(
             text.lines.iter_mut().for_each(|line| {
                 // replace non-printable characters
                 line.spans.iter_mut().for_each(|span| {
-                    span.content = replace_non_printable(
-                        &span.content.bytes().collect::<Vec<_>>(),
+                    span.content = replace_non_printable_bulk(
+                        &span.content,
                         &ReplaceNonPrintableConfig::default(),
                     )
                     .0
+                    .into_owned()
                     .into();
                 });
             });
@@ -334,21 +396,23 @@ pub async fn try_preview(
             let total_lines = u16::try_from(text.lines.len()).unwrap_or(0);
 
             Preview::new(
+                entry.raw.clone(),
                 entry.display(),
                 text,
                 None,
                 total_lines,
-                String::new(),
+                None,
             )
         }
     };
 
     // Cache the preview if caching is enabled
-    // Note: we're caching errors as well to avoid re-running potentially expensive commands
+    // NOTE: we're caching errors as well to avoid re-running potentially expensive commands
     if let Some(cache) = &cache {
+        // FIXME: we should really just wrap the preview in an Arc to avoid cloning here
         cache.lock().insert(&entry, &preview);
-        debug!("Preview for entry '{}' cached", entry.raw);
     }
+    // FIXME: ... and just send an Arc here as well
     results_handle
         .send(preview)
         .with_context(|| "Failed to send preview result to main thread.")

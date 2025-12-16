@@ -1,7 +1,8 @@
 use crate::cli::parse_source_entry_delimiter;
 use crate::config::ui::{InputBarConfig, ThemeOverrides};
+use crate::utils::strings::SPACE;
 use crate::{
-    config::{KeyBindings, ui},
+    config::{Keybindings, ui},
     event::Key,
     screen::layout::Orientation,
 };
@@ -178,7 +179,7 @@ pub enum ExecutionMode {
 }
 
 fn default_separator() -> String {
-    " ".to_string()
+    SPACE.to_string()
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
@@ -198,7 +199,7 @@ pub struct ActionSpec {
     // TODO: add `requirements` (see `prototypes::BinaryRequirement`)
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct ChannelKeyBindings {
     /// Optional channel specific shortcut that, when pressed, switches directly to this channel.
     #[serde(default)]
@@ -206,7 +207,7 @@ pub struct ChannelKeyBindings {
     /// Regular action -> binding mappings living at channel level.
     #[serde(flatten)]
     #[serde(default)]
-    pub bindings: KeyBindings,
+    pub bindings: Keybindings,
 }
 
 impl ChannelKeyBindings {
@@ -222,7 +223,7 @@ pub struct HistoryConfig {
     pub global_mode: Option<bool>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct ChannelPrototype {
     pub metadata: Metadata,
     pub source: SourceSpec,
@@ -855,7 +856,7 @@ mod tests {
             keybindings.bindings.get(&Key::F(8)),
             Some(
                 &crate::action::Action::ExternalAction(
-                    "thebatman".to_string()
+                    "actions:thebatman".to_string()
                 )
                 .into()
             )
@@ -863,8 +864,10 @@ mod tests {
         assert_eq!(
             keybindings.bindings.get(&Key::F(9)),
             Some(
-                &crate::action::Action::ExternalAction("lsman".to_string())
-                    .into()
+                &crate::action::Action::ExternalAction(
+                    "actions:lsman".to_string()
+                )
+                .into()
             )
         );
     }

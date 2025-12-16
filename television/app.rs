@@ -1,17 +1,16 @@
 use std::{thread::sleep, time::Duration};
 
 use crate::{
-    action::Action,
+    action::{Action, CUSTOM_ACTION_PREFIX},
     cable::Cable,
     channels::{
         entry::Entry,
         prototypes::{ActionSpec, ExecutionMode},
     },
-    config::layers::LayeredConfig,
-    event::{
-        ControlEvent, Event, EventLoop, InputEvent, Key, MouseInputEvent,
-    },
+    config::layers::ConfigLayers,
+    event::{ControlEvent, Event, EventLoop, Key},
     history::History,
+    mouse::get_action_for_mouse_event,
     render::{RenderingTask, UiState, render},
     television::{Mode, Television},
     tui::{IoStream, Tui, TuiMode},
@@ -114,7 +113,7 @@ const EVENT_BUF_SIZE: usize = 4;
 const ACTION_BUF_SIZE: usize = 8;
 
 impl App {
-    pub fn new(layered_config: LayeredConfig, cable_channels: Cable) -> Self {
+    pub fn new(layered_config: ConfigLayers, cable_channels: Cable) -> Self {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let (render_tx, render_rx) = mpsc::unbounded_channel();
         let (_, event_rx) = mpsc::unbounded_channel();
@@ -218,7 +217,7 @@ impl App {
             self.television
                 .merged_config
                 .input_map
-                .merge_key_bindings(&shortcut_keybindings);
+                .merge_globals_with(&shortcut_keybindings);
         }
         debug!(
             "Updated input_map (with shortcuts): {:?}",
@@ -402,7 +401,7 @@ impl App {
                     .television
                     .merged_config
                     .input_map
-                    .get_actions_for_key(&keycode)
+                    .get_actions_for_key(&keycode, &self.television.mode)
                 {
                     let actions_vec = actions.as_slice().to_vec();
                     debug!("Keybinding found: {actions_vec:?}");
@@ -415,21 +414,12 @@ impl App {
                     }
                 }
             }
-            Event::Mouse(mouse_event) => {
-                // Convert mouse event to InputEvent and use the input_map
-                if self.television.mode == Mode::Channel {
-                    let input_event = InputEvent::Mouse(MouseInputEvent {
-                        kind: mouse_event.kind,
-                        position: (mouse_event.column, mouse_event.row),
-                    });
-                    self.television
-                        .merged_config
-                        .input_map
-                        .get_actions_for_input(&input_event)
-                        .unwrap_or_else(|| vec![Action::NoOp])
-                } else {
-                    vec![Action::NoOp]
-                }
+            Event::Mouse(me) => {
+                vec![get_action_for_mouse_event(
+                    me,
+                    &self.television.ui_state.layout,
+                    self.television.mode,
+                )]
             }
             // terminal events
             Event::Tick => vec![Action::Tick],
@@ -579,12 +569,14 @@ impl App {
                         if let Some(selected_entries) =
                             self.television.get_selected_entries()
                         {
-                            if let Some(action_spec) = self
-                                .television
-                                .merged_config
-                                .channel_actions
-                                .get(action_name)
-                                .cloned()
+                            if let Some(action_spec) =
+                                self.television
+                                    .merged_config
+                                    .channel_actions
+                                    .get(action_name.trim_start_matches(
+                                        CUSTOM_ACTION_PREFIX,
+                                    ))
+                                    .cloned()
                             {
                                 match action_spec.mode {
                                     // suspend the TUI and execute the action
