@@ -23,12 +23,7 @@ pub struct Cli {
 
     /// The working directory to start the application in.
     ///
-    /// This flag works identically in both channel mode and ad-hoc mode.
-    ///
-    /// This can be used to specify a different working directory for the
-    /// application to start in. This is useful when the application is
-    /// started from a different directory than the one the user wants to
-    /// interact with.
+    /// Defaults to the current directory.
     #[arg(value_name = "PATH", index = 2, verbatim_doc_comment)]
     pub working_directory: Option<String>,
 
@@ -161,9 +156,14 @@ pub struct Cli {
     ///
     /// This can be useful when the preview command is expensive to run
     /// and you want to avoid running it multiple times for the same entry.
+    ///
+    /// This is enabled by default since most channels will benefit from it.
+    ///
+    /// This can be disabled for special cases e.g. where the preview command output changes
+    /// frequently and/or you want live udpates.
     #[arg(
         long,
-        default_value = "false",
+        default_value = "true",
         verbatim_doc_comment,
         conflicts_with = "no_preview",
         help_heading = "Preview"
@@ -291,9 +291,19 @@ pub struct Cli {
     )]
     pub input_prompt: Option<String>,
 
-    /// Sets the input panel border type.
+    /// Input bar position.
     ///
-    /// Available options are: `none`, `plain`, `rounded`, `thick`.
+    /// Sets whether the input panel is shown at the top or bottom of the UI.
+    #[arg(
+        long,
+        value_enum,
+        value_name = "INPUT_POSITION",
+        verbatim_doc_comment,
+        help_heading = "Input"
+    )]
+    pub input_position: Option<InputPosition>,
+
+    /// Sets the input panel border type.
     #[arg(long, value_enum, verbatim_doc_comment, help_heading = "Input")]
     pub input_border: Option<BorderType>,
 
@@ -333,8 +343,6 @@ pub struct Cli {
     pub show_status_bar: bool,
 
     /// Sets the results panel border type.
-    ///
-    /// Available options are: `none`, `plain`, `rounded`, `thick`.
     #[arg(long, value_enum, verbatim_doc_comment, help_heading = "UI")]
     pub results_border: Option<BorderType>,
 
@@ -355,8 +363,6 @@ pub struct Cli {
     ///
     /// When a channel is specified: Overrides the layout/orientation defined in the channel prototype.
     /// When no channel is specified: Sets the layout orientation for the ad-hoc channel.
-    ///
-    /// Options are "landscape" or "portrait".
     #[arg(long, value_enum, verbatim_doc_comment, help_heading = "UI")]
     pub layout: Option<LayoutOrientation>,
 
@@ -666,6 +672,12 @@ pub enum Shell {
 pub enum LayoutOrientation {
     Landscape,
     Portrait,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
+pub enum InputPosition {
+    Top,
+    Bottom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
