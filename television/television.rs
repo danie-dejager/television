@@ -2,6 +2,7 @@ use crate::{
     action::Action,
     cable::Cable,
     channels::{
+        action_picker::{ActionEntry, ActionPicker},
         channel::ChannelKind as CableChannel,
         entry::Entry,
         prototypes::{ChannelPrototype, CommandSpec, Template},
@@ -13,6 +14,7 @@ use crate::{
     },
     draw::{ChannelState, Ctx, TvState},
     errors::os_error_exit,
+    frecency::FrecencyHandle,
     input::convert_action_to_input_request,
     picker::{Movement, Picker},
     previewer::{
@@ -44,6 +46,7 @@ use tracing::{debug, error};
 pub enum Mode {
     Channel,
     RemoteControl,
+    ActionPicker,
 }
 
 impl Display for Mode {
@@ -51,8 +54,19 @@ impl Display for Mode {
         match self {
             Mode::Channel => write!(f, "Channel"),
             Mode::RemoteControl => write!(f, "Remote Control"),
+            Mode::ActionPicker => write!(f, "Action Picker"),
         }
     }
+}
+
+/// State for the missing requirements popup dialog.
+///
+/// This popup is shown when a user attempts to switch to a channel
+/// that has unmet binary requirements.
+#[derive(Debug, Clone)]
+pub struct MissingRequirementsPopup {
+    pub channel_name: String,
+    pub missing_requirements: Vec<String>,
 }
 
 #[derive(PartialEq, Copy, Clone, Hash, Eq, Debug, Serialize, Deserialize)]
@@ -67,12 +81,14 @@ pub struct Television {
     pub merged_config: MergedConfig,
     pub channel: CableChannel,
     pub remote_control: Option<RemoteControl>,
+    pub action_picker: Option<ActionPicker>,
     pub mode: Mode,
     pub currently_selected: Option<Entry>,
     pub current_pattern: String,
     pub matching_mode: MatchingMode,
     pub results_picker: Picker<Entry>,
     pub rc_picker: Picker<CableEntry>,
+    pub ap_picker: Picker<ActionEntry>,
     pub preview_state: PreviewState,
     pub preview_handles:
         Option<(UnboundedSender<PreviewRequest>, UnboundedReceiver<Preview>)>,
@@ -80,6 +96,10 @@ pub struct Television {
     pub colorscheme: Arc<Colorscheme>,
     pub ticks: u64,
     pub ui_state: UiState,
+    /// Frecency manager for ranking previously-selected entries
+    frecency: FrecencyHandle,
+    /// Popup shown when attempting to switch to a channel with missing requirements
+    pub missing_requirements_popup: Option<MissingRequirementsPopup>,
 }
 
 impl Television {
@@ -90,6 +110,7 @@ impl Television {
         action_tx: UnboundedSender<Action>,
         layered_config: ConfigLayers,
         cable_channels: Cable,
+        frecency: FrecencyHandle,
     ) -> Self {
         let merged_config = {
             // this is to keep the outer merged config immutable
@@ -125,15 +146,24 @@ impl Television {
                 )
             });
 
+        let frecency_config =
+            if merged_config.channel_frecency && !merged_config.no_sort {
+                Some((frecency.clone(), merged_config.channel_name.clone()))
+            } else {
+                None
+            };
+
         let mut channel = CableChannel::new(
             merged_config.channel_source_command.clone(),
             merged_config.channel_source_entry_delimiter,
             merged_config.channel_source_ansi,
-            merged_config.channel_source_display,
-            merged_config.channel_source_output,
+            merged_config.channel_source_display.clone(),
+            merged_config.channel_source_output.clone(),
             merged_config.channel_preview_command.is_some(),
-            merged_config.sort_results,
+            merged_config.no_sort,
+            frecency_config,
         );
+
         let app_metadata = AppMetadata::new(
             env!("CARGO_PKG_VERSION").to_string(),
             std::env::current_dir()
@@ -152,7 +182,10 @@ impl Television {
 
         let pattern = Television::preprocess_pattern(
             matching_mode,
-            &merged_config.input.unwrap_or(EMPTY_STRING.to_string()),
+            &merged_config
+                .input
+                .clone()
+                .unwrap_or(EMPTY_STRING.to_string()),
         );
 
         channel.find(&pattern);
@@ -172,24 +205,31 @@ impl Television {
             ))
         };
 
+        // Action picker is lazily initialized when toggled
+        let action_picker = None;
+
         Self {
             action_tx,
             merged_config: layered_config.merge(),
             layered_config,
             channel,
             remote_control,
+            action_picker,
             mode: Mode::Channel,
             currently_selected: None,
             current_pattern: EMPTY_STRING.to_string(),
             results_picker,
             matching_mode,
             rc_picker: Picker::default(),
+            ap_picker: Picker::default(),
             preview_state,
             preview_handles,
             app_metadata: Arc::new(app_metadata),
             colorscheme: Arc::new(colorscheme),
             ticks: 0,
             ui_state: UiState::default(),
+            frecency,
+            missing_requirements_popup: None,
         }
     }
 
@@ -229,12 +269,15 @@ impl Television {
             self.channel.total_count(),
             self.channel.running(),
             self.channel.current_command().to_string(),
+            self.channel.source_index(),
+            self.channel.source_count(),
         );
         let tv_state = TvState::new(
             self.mode,
             self.currently_selected.clone(),
             self.results_picker.clone(),
             self.rc_picker.clone(),
+            self.ap_picker.clone(),
             channel_state,
             self.preview_state.for_render_context(
                 self.ui_state
@@ -243,6 +286,7 @@ impl Television {
                     .as_ref()
                     .map_or(0, |r| r.height as usize),
             ),
+            self.missing_requirements_popup.clone(),
         );
 
         Ctx::new(
@@ -298,6 +342,19 @@ impl Television {
         // Set preview state enabled based on both channel capability and UI configuration
         self.preview_state.enabled = channel_prototype.preview.is_some()
             && !self.merged_config.preview_panel_hidden;
+
+        // Build frecency config if enabled for this channel and sorting is enabled
+        let frecency_config = if self.merged_config.channel_frecency
+            && !self.merged_config.no_sort
+        {
+            Some((
+                self.frecency.clone(),
+                self.merged_config.channel_name.clone(),
+            ))
+        } else {
+            None
+        };
+
         self.channel = CableChannel::new(
             self.merged_config.channel_source_command.clone(),
             self.merged_config.channel_source_entry_delimiter,
@@ -305,7 +362,8 @@ impl Television {
             self.merged_config.channel_source_display.clone(),
             self.merged_config.channel_source_output.clone(),
             self.merged_config.channel_preview_command.is_some(),
-            self.merged_config.sort_results,
+            self.merged_config.no_sort,
+            frecency_config,
         );
         self.channel.load();
     }
@@ -320,6 +378,11 @@ impl Television {
             Mode::RemoteControl => {
                 if let Some(rc) = self.remote_control.as_mut() {
                     rc.find(pattern);
+                }
+            }
+            Mode::ActionPicker => {
+                if let Some(ap) = self.action_picker.as_mut() {
+                    ap.find(pattern);
                 }
             }
         }
@@ -381,6 +444,7 @@ impl Television {
         match self.mode {
             Mode::Channel => self.results_picker.selected().map(|i| i as u32),
             Mode::RemoteControl => self.rc_picker.selected().map(|i| i as u32),
+            Mode::ActionPicker => self.ap_picker.selected().map(|i| i as u32),
         }
     }
 
@@ -424,6 +488,22 @@ impl Television {
                         as usize,
                 );
             }
+            Mode::ActionPicker => {
+                let total_results =
+                    self.action_picker
+                        .as_ref()
+                        .expect("action picker should be Some when in AP mode")
+                        .result_count() as usize;
+                self.ap_picker.move_cursor(
+                    movement,
+                    step,
+                    total_results,
+                    self.ui_state.layout.action_picker.expect(
+                        "action picker UI panel should be contained in the layout when in AP mode"
+                    ).height.saturating_sub(5) // accounting for borders (2) and input box (3)
+                        as usize,
+                );
+            }
         }
     }
 
@@ -433,6 +513,9 @@ impl Television {
             Mode::RemoteControl => {
                 self.rc_picker.reset_selection();
             }
+            Mode::ActionPicker => {
+                self.ap_picker.reset_selection();
+            }
         }
     }
 
@@ -441,6 +524,9 @@ impl Television {
             Mode::Channel => self.results_picker.reset_input(),
             Mode::RemoteControl => {
                 self.rc_picker.reset_input();
+            }
+            Mode::ActionPicker => {
+                self.ap_picker.reset_input();
             }
         }
     }
@@ -513,6 +599,7 @@ impl Television {
                     | Action::TogglePreview
                     | Action::ToggleStatusBar
                     | Action::ToggleRemoteControl
+                    | Action::ToggleActionPicker
                     | Action::ToggleOrientation
                     | Action::CopyEntryToClipboard
                     | Action::CycleSources
@@ -621,10 +708,72 @@ impl Television {
             self.remote_control.as_ref().unwrap().total_count();
     }
 
+    pub fn update_ap_picker_state(&mut self) {
+        let Some(ap) = self.action_picker.as_ref() else {
+            return;
+        };
+
+        if self.ap_picker.selected().is_none() && ap.result_count() > 0 {
+            self.ap_picker.select(Some(0));
+            self.ap_picker.relative_select(Some(0));
+        }
+
+        {
+            let offset = u32::try_from(self.ap_picker.offset()).unwrap();
+            let height = self
+                .ui_state
+                .layout
+                .action_picker
+                .unwrap_or_default()
+                .height
+                .saturating_sub(5)
+                .into();
+            let new_entries =
+                self.action_picker.as_mut().unwrap().results(height, offset);
+
+            self.ap_picker.entries = Arc::new(new_entries);
+        }
+        self.ap_picker.total_items =
+            self.action_picker.as_ref().unwrap().total_count();
+    }
+
+    /// Initialize the action picker with the current channel's actions.
+    fn init_action_picker(&mut self) {
+        // Build a map from action strings to keybindings
+        let mut action_keybindings = rustc_hash::FxHashMap::default();
+        for (key, actions) in
+            self.merged_config.input_map.channel_keybindings.iter()
+        {
+            for action in actions.as_slice() {
+                if let Action::ExternalAction(action_str) = action {
+                    action_keybindings.insert(action_str.clone(), *key);
+                }
+            }
+        }
+        // Also check global keybindings for external actions
+        for (key, actions) in
+            self.merged_config.input_map.global_keybindings.iter()
+        {
+            for action in actions.as_slice() {
+                if let Action::ExternalAction(action_str) = action {
+                    action_keybindings
+                        .entry(action_str.clone())
+                        .or_insert(*key);
+                }
+            }
+        }
+
+        self.action_picker = Some(ActionPicker::new(
+            &self.merged_config.channel_actions,
+            &action_keybindings,
+        ));
+    }
+
     pub fn handle_input_action(&mut self, action: &Action) {
         let input = match self.mode {
             Mode::Channel => &mut self.results_picker.input,
             Mode::RemoteControl => &mut self.rc_picker.input,
+            Mode::ActionPicker => &mut self.ap_picker.input,
         };
         input.handle(convert_action_to_input_request(action).unwrap());
         match action {
@@ -664,6 +813,24 @@ impl Television {
             }
             Mode::RemoteControl => {
                 if let Some(entry) = self.get_selected_cable_entry() {
+                    // Check for missing requirements
+                    let missing: Vec<String> = entry
+                        .requirements
+                        .iter()
+                        .filter(|r| !r.is_met())
+                        .map(|r| r.bin_name.clone())
+                        .collect();
+
+                    if !missing.is_empty() {
+                        // Show popup instead of changing channel
+                        self.missing_requirements_popup =
+                            Some(MissingRequirementsPopup {
+                                channel_name: entry.channel_name.clone(),
+                                missing_requirements: missing,
+                            });
+                        return Ok(());
+                    }
+
                     let new_channel = self
                         .remote_control
                         .as_ref()
@@ -677,8 +844,34 @@ impl Television {
                     self.change_channel(&new_channel);
                 }
             }
+            Mode::ActionPicker => {
+                if let Some(entry) = self.get_selected_action_entry() {
+                    // Close the action picker and dispatch the action
+                    self.reset_picker_selection();
+                    self.reset_picker_input();
+                    if let Some(ap) = self.action_picker.as_mut() {
+                        ap.find(EMPTY_STRING);
+                    }
+                    self.mode = Mode::Channel;
+                    self.action_tx
+                        .send(Action::ExternalAction(entry.action_string))?;
+                }
+            }
         }
         Ok(())
+    }
+
+    pub fn get_selected_action_entry(&mut self) -> Option<ActionEntry> {
+        if self
+            .action_picker
+            .as_ref()
+            .is_none_or(|ap| ap.result_count() == 0)
+        {
+            return None;
+        }
+        self.selected_index().and_then(|idx| {
+            self.action_picker.as_mut().map(|ap| ap.get_result(idx))
+        })
     }
 
     pub fn handle_copy_entry_to_clipboard(&mut self) {
@@ -722,6 +915,20 @@ impl Television {
     }
 
     pub fn handle_action(&mut self, action: &Action) -> Result<()> {
+        // If popup is showing, only allow certain actions to dismiss it
+        if self.missing_requirements_popup.is_some() {
+            match action {
+                // These actions dismiss the popup and stay in RemoteControl mode
+                Action::ConfirmSelection
+                | Action::Quit
+                | Action::ToggleRemoteControl => {
+                    self.missing_requirements_popup = None;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
         // handle actions
         match action {
             Action::AddInputChar(_)
@@ -827,6 +1034,59 @@ impl Television {
                         self.reset_picker_selection();
                         self.mode = Mode::Channel;
                     }
+                    Mode::ActionPicker => {
+                        // Close action picker and open remote control
+                        self.reset_picker_input();
+                        if let Some(ap) = self.action_picker.as_mut() {
+                            ap.find(EMPTY_STRING);
+                        }
+                        self.reset_picker_selection();
+                        self.mode = Mode::RemoteControl;
+                        self.remote_control
+                            .as_mut()
+                            .unwrap()
+                            .find(EMPTY_STRING);
+                        self.ticks = 0;
+                    }
+                }
+            }
+            Action::ToggleActionPicker => {
+                // Only allow if channel has actions defined
+                if self.merged_config.channel_actions.is_empty() {
+                    return Ok(());
+                }
+                match self.mode {
+                    Mode::Channel => {
+                        self.init_action_picker();
+                        self.mode = Mode::ActionPicker;
+                        if let Some(ap) = self.action_picker.as_mut() {
+                            ap.find(EMPTY_STRING);
+                        }
+                        self.ticks = 0;
+                    }
+                    Mode::ActionPicker => {
+                        self.reset_picker_input();
+                        if let Some(ap) = self.action_picker.as_mut() {
+                            ap.find(EMPTY_STRING);
+                        }
+                        self.reset_picker_selection();
+                        self.mode = Mode::Channel;
+                    }
+                    Mode::RemoteControl => {
+                        // Close remote control and open action picker
+                        self.reset_picker_input();
+                        self.remote_control
+                            .as_mut()
+                            .unwrap()
+                            .find(EMPTY_STRING);
+                        self.reset_picker_selection();
+                        self.init_action_picker();
+                        self.mode = Mode::ActionPicker;
+                        if let Some(ap) = self.action_picker.as_mut() {
+                            ap.find(EMPTY_STRING);
+                        }
+                        self.ticks = 0;
+                    }
                 }
             }
             Action::ToggleHelp => {
@@ -878,6 +1138,10 @@ impl Television {
             self.update_rc_picker_state();
         }
 
+        if self.action_picker.is_some() && self.mode == Mode::ActionPicker {
+            self.update_ap_picker_state();
+        }
+
         if self.mode == Mode::Channel {
             let selected_entry = self.get_selected_entry();
             self.update_preview_state(&selected_entry)?;
@@ -901,8 +1165,11 @@ mod test {
         cli::{ChannelCli, GlobalCli},
         config::layers::ConfigLayers,
         event::Key,
+        frecency::Frecency,
         television::{MatchingMode, Mode, Television},
     };
+    use std::sync::Arc;
+    use tempfile::tempdir;
 
     #[test]
     fn test_prompt_preprocessing() {
@@ -940,10 +1207,13 @@ mod test {
         };
         let layered_config =
             ConfigLayers::new(config, prototype, cli_args.clone());
+        let dir = tempdir().unwrap();
+        let frecency = Arc::new(Frecency::new(100, dir.path()));
         let tv = Television::new(
             tokio::sync::mpsc::unbounded_channel().0,
             layered_config,
             Cable::from_prototypes(vec![]),
+            frecency,
         );
 
         assert_eq!(tv.matching_mode, MatchingMode::Substring);
@@ -980,10 +1250,13 @@ mod test {
             prototype.clone(),
             cli_args.clone(),
         );
+        let dir = tempdir().unwrap();
+        let frecency = Arc::new(Frecency::new(100, dir.path()));
         let tv = Television::new(
             tokio::sync::mpsc::unbounded_channel().0,
             layered_config,
             Cable::from_prototypes(vec![]),
+            frecency,
         );
 
         assert_eq!(

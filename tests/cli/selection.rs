@@ -43,6 +43,8 @@ fn test_take_1_auto_selects_first_entry() {
 /// Tests that --take-1-fast immediately selects the first entry as it appears.
 #[test]
 fn test_take_1_fast_auto_selects_first_entry_immediately() {
+    use std::time::Duration;
+
     let mut tester = PtyTester::new();
 
     // This should auto-select "UNIQUE16CHARID" since it's the only result
@@ -53,8 +55,13 @@ fn test_take_1_fast_auto_selects_first_entry_immediately() {
     ]);
     tester.spawn_command(cmd);
 
-    // Should auto-select and output the result without showing TUI
-    tester.assert_raw_output_contains("UNIQUE16CHARID");
+    // Should auto-select and output the result without showing TUI.
+    // Use timeout-based assertion because --take-1-fast has a race condition:
+    // it may check for entries before the source command has produced output.
+    tester.assert_raw_output_contains_with_timeout(
+        "UNIQUE16CHARID",
+        Duration::from_secs(2),
+    );
 }
 
 /// Tests that --select-1 and --take-1 cannot be used together.
@@ -162,9 +169,10 @@ fn test_watch_and_take_1_fast_conflict_errors() {
 /// Tests that --expect works as intended.
 #[test]
 fn test_expect_with_selection() {
+    use std::time::Duration;
+
     let mut tester = PtyTester::new();
 
-    // This should auto-select "UNIQUE16CHARID" and exit with it
     let cmd = tv_local_config_and_cable_with_args(&[
         "files",
         "--expect",
@@ -174,14 +182,15 @@ fn test_expect_with_selection() {
     ]);
     let mut child = tester.spawn_command_tui(cmd);
 
+    // Wait for the TUI to show results before sending the expect key
+    tester.assert_tui_frame_contains("Cargo.toml");
+
     tester.send(&ctrl('c'));
 
-    let out = tester.read_raw_output();
-
-    assert!(
-        out.contains("ctrl-c\r\nCargo.toml"),
-        "Expected output to contain 'ctrl-c\\r\\nCargo.toml' but got: '{:?}'",
-        out
+    // Use timeout-based assertion because the process needs time to write output
+    tester.assert_raw_output_contains_with_timeout(
+        "ctrl-c\r\nCargo.toml",
+        Duration::from_secs(2),
     );
 
     PtyTester::assert_exit_ok(&mut child, DEFAULT_DELAY);

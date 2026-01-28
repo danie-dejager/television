@@ -71,6 +71,12 @@ alias t := test
 	cargo test --all --all-features -- --nocapture
 	echo "Done"
 
+# Run tests with faster delays for local development
+@test-fast:
+	echo "Running {{ NAME }}'s test suite (fast mode)..."
+	TV_TEST_DELAY_MS=50 cargo test --all --all-features -- --nocapture
+	echo "Done"
+
 alias b := build
 # Build the project with the specified profile (dev by default)
 @build profile='dev':
@@ -178,4 +184,4 @@ bump-version kind='patch':
 		printf "%s\n" '\''```text'\''; \
 		printf "%s\n" "$help_output"; \
 		printf "%s\n" '\''```'\''; \
-	} > docs/01-Users/09-cli.md'
+	} > docs/reference/01-cli.md'

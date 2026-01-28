@@ -1,5 +1,6 @@
 use crate::{
     config::ui::{BorderType, Padding},
+    event::Key,
     previewer::state::PreviewState,
     screen::colors::Colorscheme,
     utils::strings::{
@@ -28,6 +29,7 @@ pub fn draw_preview_content_block(
     padding: &Padding,
     scrollbar: bool,
     word_wrap: bool,
+    cycle_key: Option<Key>,
 ) -> Result<()> {
     let inner = draw_content_outer_block(
         f,
@@ -37,6 +39,9 @@ pub fn draw_preview_content_block(
         *padding,
         &preview_state.preview.title,
         preview_state.preview.footer,
+        preview_state.preview.preview_index,
+        preview_state.preview.preview_count,
+        cycle_key,
     );
     let total_lines =
         preview_state.preview.total_lines.saturating_sub(1) as usize;
@@ -109,6 +114,7 @@ pub fn build_preview_paragraph(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_content_outer_block(
     f: &mut Frame,
     rect: Rect,
@@ -117,7 +123,23 @@ fn draw_content_outer_block(
     padding: Padding,
     preview_title: &str,
     preview_footer: Option<String>,
+    preview_index: usize,
+    preview_count: usize,
+    cycle_key: Option<Key>,
 ) -> Rect {
+    let (indicator, key_hint) = if preview_count > 1 {
+        let dots: String = (0..preview_count)
+            .map(|i| if i == preview_index { "●" } else { "○" })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let hint = cycle_key.map(|k| format!(" {}", k)).unwrap_or_default();
+        (format!(" ⟨ {} ⟩", dots), hint)
+    } else {
+        (String::new(), String::new())
+    };
+    let indicator_len = u16::try_from(indicator.chars().count()).unwrap_or(0);
+    let key_hint_len = u16::try_from(key_hint.chars().count()).unwrap_or(0);
+
     let mut preview_title_spans = vec![Span::from(SPACE)];
     // preview header
     preview_title_spans.push(Span::styled(
@@ -127,10 +149,24 @@ fn draw_content_outer_block(
                 &ReplaceNonPrintableConfig::default(),
             )
             .0,
-            rect.width.saturating_sub(4) as usize,
+            rect.width.saturating_sub(4 + indicator_len + key_hint_len)
+                as usize,
         ),
         Style::default().fg(colorscheme.preview.title_fg).bold(),
     ));
+
+    if preview_count > 1 {
+        preview_title_spans.push(Span::styled(
+            indicator,
+            Style::default().fg(colorscheme.input.results_count_fg),
+        ));
+        if !key_hint.is_empty() {
+            preview_title_spans.push(Span::styled(
+                key_hint,
+                Style::default().fg(colorscheme.general.border_fg),
+            ));
+        }
+    }
     preview_title_spans.push(Span::from(SPACE));
 
     let mut block = Block::default();

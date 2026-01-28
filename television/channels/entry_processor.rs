@@ -3,6 +3,8 @@ use crate::{
     matcher::{injector::Injector, matched_item::MatchedItem},
 };
 use fast_strip_ansi::strip_ansi_string;
+use nucleo::Utf32Str;
+use std::borrow::Cow;
 
 /// Implementors of this trait define two things:
 /// - how to push lines into the matcher, including any preprocessing steps (e.g. stripping ANSI
@@ -23,6 +25,15 @@ pub trait EntryProcessor: Send + Sync + Clone + 'static {
     ) -> Entry;
 
     fn has_ansi(&self) -> bool;
+
+    /// Extract the frecency key from a matched item for lookup.
+    ///
+    /// This should return the same value that becomes `Entry.raw` so that
+    /// frecency lookups match correctly.
+    ///
+    /// Returns `Cow<str>` to avoid allocations when possible (e.g., for ASCII text
+    /// or when the data is already a String).
+    fn frecency_key<'a>(item: &nucleo::Item<'a, Self::Data>) -> Cow<'a, str>;
 }
 
 /// A processor that does no special processing: matches the raw lines as-is and stores
@@ -56,6 +67,21 @@ impl EntryProcessor for PlainProcessor {
 
     fn has_ansi(&self) -> bool {
         false
+    }
+
+    fn frecency_key<'a>(item: &nucleo::Item<'a, Self::Data>) -> Cow<'a, str> {
+        // Use slice(..) to get Utf32Str from Utf32String, then match on it
+        match item.matcher_columns[0].slice(..) {
+            // For ASCII, we can borrow directly without allocation.
+            // Safety: Utf32Str::Ascii only contains valid ASCII bytes which are valid UTF-8.
+            Utf32Str::Ascii(bytes) => {
+                Cow::Borrowed(unsafe { std::str::from_utf8_unchecked(bytes) })
+            }
+            // For Unicode, we must allocate to convert char slice to String.
+            Utf32Str::Unicode(_) => {
+                Cow::Owned(item.matcher_columns[0].to_string())
+            }
+        }
     }
 }
 
@@ -95,6 +121,11 @@ impl EntryProcessor for AnsiProcessor {
 
     fn has_ansi(&self) -> bool {
         true
+    }
+
+    fn frecency_key<'a>(item: &nucleo::Item<'a, Self::Data>) -> Cow<'a, str> {
+        // item.data is &String, borrow it directly without allocation
+        Cow::Borrowed(item.data.as_str())
     }
 }
 
@@ -142,5 +173,10 @@ impl EntryProcessor for DisplayProcessor {
 
     fn has_ansi(&self) -> bool {
         false
+    }
+
+    fn frecency_key<'a>(item: &nucleo::Item<'a, Self::Data>) -> Cow<'a, str> {
+        // item.data is &String, borrow it directly without allocation
+        Cow::Borrowed(item.data.as_str())
     }
 }

@@ -59,15 +59,20 @@ impl<I> Matcher<I>
 where
     I: Sync + Send + Clone + 'static,
 {
-    /// Create a new fuzzy matcher with the given configuration.
-    pub fn new(config: &config::Config) -> Self {
+    /// Create a new fuzzy matcher with the given configuration and sort strategy.
+    pub fn new(
+        config: &config::Config,
+        sort_strategy: config::SortStrategy<I>,
+    ) -> Self {
+        let mut inner = nucleo::Nucleo::new(
+            config.into(),
+            Arc::new(|| {}),
+            config.n_threads,
+            1,
+        );
+        inner.set_sort_strategy(sort_strategy);
         Self {
-            inner: nucleo::Nucleo::new(
-                config.into(),
-                Arc::new(|| {}),
-                config.n_threads,
-                1,
-            ),
+            inner,
             total_item_count: 0,
             matched_item_count: 0,
             status: Status::default(),
@@ -89,10 +94,10 @@ where
     ///
     /// # Example
     /// ```ignore
-    /// use television::matcher::{config::Config, Matcher};
+    /// use television::matcher::{config::{Config, SortStrategy}, Matcher};
     ///
     /// let config = Config::default();
-    /// let matcher = Matcher::new(&config);
+    /// let matcher = Matcher::new(&config, SortStrategy::Score);
     /// let injector = matcher.injector();
     ///
     /// injector.push(
@@ -139,10 +144,10 @@ where
     ///
     /// # Example
     /// ```ignore
-    /// use television::matcher::{config::Config, Matcher};
+    /// use television::matcher::{config::{Config, SortStrategy}, Matcher};
     ///
     /// let config = Config::default();
-    /// let mut matcher: Matcher<String> = Matcher::new(&config);
+    /// let mut matcher: Matcher<String> = Matcher::new(&config, SortStrategy::Score);
     /// matcher.find("some pattern");
     ///
     /// let results = matcher.results(10, 0);
@@ -215,10 +220,10 @@ where
     ///
     /// # Example
     /// ```ignore
-    /// use television::matcher::{config::Config, Matcher};
+    /// use television::matcher::{config::{Config, SortStrategy}, Matcher};
     ///
     /// let config = Config::default();
-    /// let mut matcher: Matcher<String> = Matcher::new(&config);
+    /// let mut matcher: Matcher<String> = Matcher::new(&config, SortStrategy::Score);
     /// matcher.find("some pattern");
     ///
     /// if let Some(item) = matcher.get_result(0) {
@@ -265,5 +270,16 @@ where
         self.status = Status::default();
         self.last_pattern.clear();
         self.col_indices_buffer.clear();
+    }
+
+    /// Set whether to reverse the input order.
+    ///
+    /// When enabled, items with higher indices (added later) will appear first
+    /// when scores are equal. This is useful for channels like shell history
+    /// where more recent entries should appear at the top.
+    ///
+    /// Defaults to `false`.
+    pub fn reverse_items(&mut self, reverse: bool) {
+        self.inner.reverse_items(reverse);
     }
 }
