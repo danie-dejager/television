@@ -28,7 +28,7 @@ const RELOAD_RENDERING_DELAY: Duration = Duration::from_millis(200);
 pub struct Channel<P: EntryProcessor> {
     pub source_command: CommandSpec,
     pub source_entry_delimiter: Option<char>,
-    pub source_output: Option<Arc<Template>>,
+    pub source_output: Option<Template>,
     pub supports_preview: bool,
     processor: P,
     matcher: Matcher<P::Data>,
@@ -38,9 +38,14 @@ pub struct Channel<P: EntryProcessor> {
     /// Indicates if the channel is currently reloading to prevent UI flickering
     /// by delaying the rendering of a new frame.
     pub reloading: Arc<AtomicBool>,
+    /// Whether this channel reads from stdin directly instead of spawning a
+    /// source command. When true, `load()` reads `tokio::io::stdin()` and
+    /// `reload()` is a no-op (stdin can only be consumed once).
+    is_stdin: bool,
 }
 
 impl<P: EntryProcessor> Channel<P> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         source_command: CommandSpec,
         source_entry_delimiter: Option<char>,
@@ -49,6 +54,7 @@ impl<P: EntryProcessor> Channel<P> {
         no_sort: bool,
         processor: P,
         frecency: Option<(FrecencyHandle, String)>,
+        is_stdin: bool,
     ) -> Self {
         let config = Config::default().prefer_prefix(true);
 
@@ -81,7 +87,7 @@ impl<P: EntryProcessor> Channel<P> {
         Self {
             source_command,
             source_entry_delimiter,
-            source_output: source_output.map(Arc::new),
+            source_output,
             supports_preview,
             processor,
             matcher,
@@ -89,23 +95,36 @@ impl<P: EntryProcessor> Channel<P> {
             crawl_handle: None,
             current_source_index,
             reloading: Arc::new(AtomicBool::new(false)),
+            is_stdin,
         }
     }
 
     pub fn load(&mut self) {
         let injector = self.matcher.injector();
         let processor = self.processor.clone();
-        let crawl_handle = tokio::spawn(load_candidates(
-            self.source_command.clone(),
-            self.source_entry_delimiter,
-            self.current_source_index,
-            processor,
-            injector,
-        ));
+        let crawl_handle = if self.is_stdin {
+            tokio::spawn(load_stdin_candidates(
+                self.source_entry_delimiter,
+                processor,
+                injector,
+            ))
+        } else {
+            tokio::spawn(load_candidates(
+                self.source_command.clone(),
+                self.source_entry_delimiter,
+                self.current_source_index,
+                processor,
+                injector,
+            ))
+        };
         self.crawl_handle = Some(crawl_handle);
     }
 
     pub fn reload(&mut self) {
+        if self.is_stdin {
+            debug!("Stdin channel cannot be reloaded, skipping.");
+            return;
+        }
         if self.reloading.load(std::sync::atomic::Ordering::Relaxed) {
             debug!("Reload already in progress, skipping.");
             return;
@@ -225,6 +244,10 @@ impl<P: EntryProcessor> Channel<P> {
     pub fn source_count(&self) -> usize {
         self.source_command.inner.len()
     }
+
+    pub fn is_stdin(&self) -> bool {
+        self.is_stdin
+    }
 }
 
 const DEFAULT_LINE_BUFFER_SIZE: usize = 256;
@@ -274,10 +297,7 @@ pub async fn load_candidates<P: EntryProcessor>(
             let n = reader.read_until(delimiter, &mut buf).await.unwrap_or(0);
             n > 0
         } {
-            batch.push(std::mem::replace(
-                &mut buf,
-                Vec::with_capacity(DEFAULT_LINE_BUFFER_SIZE),
-            ));
+            batch.push(buf.clone());
 
             // Flush batch when it reaches the target size
             if batch.len() >= BATCH_SIZE {
@@ -330,6 +350,63 @@ pub async fn load_candidates<P: EntryProcessor>(
         }
     }
     let _ = child.wait().await;
+}
+
+/// Reads lines from process stdin and pushes them to the injector.
+///
+/// This is used by the stdin channel to read piped input directly in Rust,
+/// avoiding platform-specific issues with shell `cat` (e.g. `PowerShell`'s
+/// `Get-Content` alias on Windows).
+pub async fn load_stdin_candidates<P: EntryProcessor>(
+    entry_delimiter: Option<char>,
+    processor: P,
+    injector: Injector<P::Data>,
+) {
+    debug!("Loading candidates from stdin");
+    let stdin = tokio::io::stdin();
+    let mut reader = BufReader::new(stdin);
+    let mut buf = Vec::with_capacity(DEFAULT_LINE_BUFFER_SIZE);
+    let mut batch = Vec::with_capacity(BATCH_SIZE);
+    let mut flush_handles = tokio::task::JoinSet::new();
+
+    let delimiter = entry_delimiter
+        .as_ref()
+        .map(|d| *d as u8)
+        .unwrap_or(DEFAULT_DELIMITER);
+
+    while {
+        buf.clear();
+        let n = reader.read_until(delimiter, &mut buf).await.unwrap_or(0);
+        n > 0
+    } {
+        batch.push(buf.clone());
+
+        if batch.len() >= BATCH_SIZE {
+            if flush_handles.len() >= MAX_CONCURRENT_FLUSHES {
+                let _ = flush_handles.join_next().await;
+            }
+
+            let batch_to_flush =
+                std::mem::replace(&mut batch, Vec::with_capacity(BATCH_SIZE));
+            let inj = injector.clone();
+            let proc = processor.clone();
+            flush_handles.spawn_blocking(move || {
+                flush_batch(batch_to_flush, &inj, &proc, delimiter);
+            });
+        }
+    }
+
+    debug!("Finished reading stdin.");
+
+    if !batch.is_empty() {
+        let inj = injector.clone();
+        let proc = processor.clone();
+        flush_handles.spawn_blocking(move || {
+            flush_batch(batch, &inj, &proc, delimiter);
+        });
+    }
+
+    while flush_handles.join_next().await.is_some() {}
 }
 
 /// Flushes a batch of entries to the injector.
@@ -431,6 +508,7 @@ impl ChannelKind {
     /// This mainly enables us to make some memory savings for the common case of no ANSI processing
     /// and no display template by using `Matcher<()>` instead of `Matcher<String>`.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::fn_params_excessive_bools)]
     pub fn new(
         source_command: CommandSpec,
         source_entry_delimiter: Option<char>,
@@ -440,6 +518,7 @@ impl ChannelKind {
         supports_preview: bool,
         no_sort: bool,
         frecency: Option<(FrecencyHandle, String)>,
+        is_stdin: bool,
     ) -> Self {
         match (source_ansi, source_display) {
             (false, None) => ChannelKind::Plain(Channel::new(
@@ -450,6 +529,7 @@ impl ChannelKind {
                 no_sort,
                 PlainProcessor,
                 frecency,
+                is_stdin,
             )),
             (true, None) => ChannelKind::Ansi(Channel::new(
                 source_command,
@@ -459,6 +539,7 @@ impl ChannelKind {
                 no_sort,
                 AnsiProcessor,
                 frecency,
+                is_stdin,
             )),
             (_, Some(template)) => ChannelKind::Display(Channel::new(
                 source_command,
@@ -466,10 +547,9 @@ impl ChannelKind {
                 source_output,
                 supports_preview,
                 no_sort,
-                DisplayProcessor {
-                    template: Arc::new(template),
-                },
+                DisplayProcessor { template },
                 frecency,
+                is_stdin,
             )),
         }
     }
@@ -498,6 +578,7 @@ impl ChannelKind {
         reloading() -> bool,
         source_index() -> usize,
         source_count() -> usize,
+        is_stdin() -> bool,
     );
 }
 
