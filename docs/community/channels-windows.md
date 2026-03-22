@@ -16,6 +16,7 @@ description = "A channel to select from shell aliases"
 
 [source]
 command = "Get-Alias | %{ \"{0,-10} = {1,-10}\" -f $_.Name,$_.Definition }"
+interactive = true
 output = "{split:=:0|trim}"
 
 ```
@@ -95,7 +96,7 @@ requirements = [ "fd", "bat",]
 command = "fd -t f . \"$env:USERPROFILE\\AppData\\Roaming\\\""
 
 [preview]
-command = "bat -n --color=always '{}'"
+command = "bat -n --color=always -- '{}'"
 
 ```
 
@@ -155,7 +156,7 @@ requirements = [ "fd", "bat",]
 command = [ "fd -t f", "fd -t f -H",]
 
 [preview]
-command = "bat -n --color=always '{}'"
+command = "bat -n --color=always -- '{}'"
 
 [keybindings]
 shortcut = "f1"
@@ -370,7 +371,7 @@ display = "[{split:\\::..2}]\t{split:\\::2..}"
 output = "{split:\\::..2}"
 
 [preview]
-command = "bat -n --color=always '{split:\\::0}'"
+command = "bat -n --color=always -- '{split:\\::0}'"
 offset = "{split:\\::1}"
 
 [preview.env]
