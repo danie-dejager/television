@@ -1,12 +1,12 @@
 use criterion::criterion_group;
 use criterion::{BenchmarkId, Criterion, Throughput};
-use nucleo::SortStrategy;
 use std::hint::black_box;
 use television::channels::entry_processor::{
     AnsiProcessor, DisplayProcessor, PlainProcessor,
 };
 use television::channels::prototypes::SourceSpec;
-use television::matcher::{Matcher, matcher_threads};
+use television::matcher::{Matcher, SortStrategy, matcher_threads};
+use television::utils::ansi::StyleRuns;
 use tokio::runtime::Runtime;
 
 pub fn load_candidates_by_size(c: &mut Criterion) {
@@ -37,7 +37,7 @@ pub fn load_candidates_by_size(c: &mut Criterion) {
                     .unwrap();
 
                     // Plain mode uses Matcher<()> for memory efficiency
-                    let mut matcher = Matcher::<()>::new(
+                    let matcher = Matcher::<()>::new(
                         SortStrategy::Score,
                         matcher_threads(),
                     );
@@ -53,7 +53,7 @@ pub fn load_candidates_by_size(c: &mut Criterion) {
                     .await;
 
                     // Ensure matcher has processed entries
-                    matcher.tick();
+                    matcher.wait_for_idle();
                 });
             },
         );
@@ -81,7 +81,7 @@ pub fn load_candidates_with_ansi(c: &mut Criterion) {
             .unwrap();
 
             // Plain mode uses Matcher<()>
-            let mut matcher =
+            let matcher =
                 Matcher::<()>::new(SortStrategy::Score, matcher_threads());
             let injector = matcher.injector();
 
@@ -94,7 +94,7 @@ pub fn load_candidates_with_ansi(c: &mut Criterion) {
             )
             .await;
 
-            matcher.tick();
+            matcher.wait_for_idle();
         });
     });
 
@@ -110,21 +110,23 @@ pub fn load_candidates_with_ansi(c: &mut Criterion) {
             ))
             .unwrap();
 
-            // ANSI mode uses Matcher<String> to store original
-            let mut matcher =
-                Matcher::<String>::new(SortStrategy::Score, matcher_threads());
+            // ANSI mode stores the styling of each line, not the raw line
+            let matcher = Matcher::<StyleRuns>::new(
+                SortStrategy::Score,
+                matcher_threads(),
+            );
             let injector = matcher.injector();
 
             television::channels::channel::load_candidates(
                 black_box(source_spec.command),
                 black_box(source_spec.entry_delimiter),
                 black_box(0),
-                black_box(AnsiProcessor),
+                black_box(AnsiProcessor::new()),
                 injector,
             )
             .await;
 
-            matcher.tick();
+            matcher.wait_for_idle();
         });
     });
 
@@ -149,7 +151,7 @@ pub fn load_candidates_with_display_template(c: &mut Criterion) {
             .unwrap();
 
             // Plain mode uses Matcher<()>
-            let mut matcher =
+            let matcher =
                 Matcher::<()>::new(SortStrategy::Score, matcher_threads());
             let injector = matcher.injector();
 
@@ -162,7 +164,7 @@ pub fn load_candidates_with_display_template(c: &mut Criterion) {
             )
             .await;
 
-            matcher.tick();
+            matcher.wait_for_idle();
         });
     });
 
@@ -178,7 +180,7 @@ pub fn load_candidates_with_display_template(c: &mut Criterion) {
             .unwrap();
 
             // Display mode uses Matcher<String> to store original
-            let mut matcher =
+            let matcher =
                 Matcher::<String>::new(SortStrategy::Score, matcher_threads());
             let injector = matcher.injector();
 
@@ -193,7 +195,7 @@ pub fn load_candidates_with_display_template(c: &mut Criterion) {
             )
             .await;
 
-            matcher.tick();
+            matcher.wait_for_idle();
         });
     });
 
