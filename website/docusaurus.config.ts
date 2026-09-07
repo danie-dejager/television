@@ -27,7 +27,6 @@ const config: Config = {
   deploymentBranch: "gh-pages",
 
   onBrokenLinks: "throw",
-  onBrokenMarkdownLinks: "warn",
 
   headTags: [
     {
@@ -58,21 +57,7 @@ const config: Config = {
           // editUrl:
           //   "https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/",
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ["rss", "atom"],
-            xslt: true,
-          },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          // editUrl:
-          //   "https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/",
-          // Useful options to enforce blogging best practices
-          onInlineTags: "warn",
-          onInlineAuthors: "warn",
-          onUntruncatedBlogPosts: "warn",
-        },
+        blog: false,
         theme: {
           customCss: "./src/css/custom.css",
         },
@@ -100,14 +85,18 @@ const config: Config = {
       },
       items: [
         {
-          href: "https://github.com/alexpasmantier/television/releases",
-          label: "releases",
-          position: "right",
+          // only shown in the mobile drawer, where it opens the docs sidebar
+          type: "docSidebar",
+          sidebarId: "docSidebar",
+          label: "docs",
+          position: "left",
+          className: "navbar-item-mobile-only",
         },
         {
           href: "https://github.com/alexpasmantier/television",
-          label: "GitHub",
           position: "right",
+          className: "header-github-link",
+          "aria-label": "GitHub repository",
         },
       ],
     },
@@ -141,6 +130,9 @@ const config: Config = {
   // you also need to enable the Remark plugin with this option
   markdown: {
     mermaid: true,
+    hooks: {
+      onBrokenMarkdownLinks: "warn",
+    },
   },
 };
 

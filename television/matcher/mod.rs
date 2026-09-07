@@ -17,7 +17,15 @@ pub mod injector;
 pub mod matched_item;
 mod worker;
 
-use worker::{Snapshot, Store, Worker, WorkerMsg};
+use worker::{Snapshot, Store, Worker, WorkerMessage};
+
+pub use frizbee::Matching as MatchingMode;
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MatcherConfig {
+    pub matching_mode: MatchingMode,
+    pub typo_resistance: bool,
+}
 
 /// Hoist scores: keys of entries to hoist mapped to their score.
 pub type HoistTable = Arc<FxHashMap<String, u64>>;
@@ -36,12 +44,11 @@ pub enum SortStrategy<I: Sync + Send + 'static> {
     /// Sort by score (desc), then index (asc)
     #[default]
     Score,
-    /// Sort items by index (asc)
+    /// Sort items by index (asc) which preserves insertion order.
     Index,
     /// Like [`SortStrategy::Score`], but entries whose key is found in the
     /// hoist table (e.g. frecency records) are hoisted to the top, ordered
-    /// by their table score. Lookups happen once per matched item, not per
-    /// comparison, and an empty pattern keeps its implicit match list.
+    /// by their table score.
     Hoisted {
         table: HoistTableFn,
         key: HoistKeyFn<I>,
@@ -69,9 +76,9 @@ pub type Notify = Arc<dyn Fn() + Send + Sync>;
 /// This is a wrapper around the `frizbee` fuzzy matcher with matching on a
 /// dedicated background thread. Items are pushed to the matcher via injectors.
 ///
-/// [`Matcher::find`] updates the background thread's pattern
-/// [`Matcher::results`] reads the latest matched results
-/// [`Matcher::get_result`] reads a single result
+/// - [`Matcher::find`] updates the background thread's pattern
+/// - [`Matcher::results`] reads the latest matched results
+/// - [`Matcher::get_result`] reads a single result
 #[allow(clippy::struct_field_names)]
 pub struct Matcher<I>
 where
@@ -82,18 +89,17 @@ where
     /// Last snapshot of matches published by the background worker.
     snapshot: Arc<Mutex<Arc<Snapshot>>>,
     /// Channel used to notify the background worker of changes.
-    worker_tx: mpsc::Sender<WorkerMsg<I>>,
+    worker_tx: mpsc::Sender<WorkerMessage<I>>,
     /// Whether the background worker is currently matching or has pending
-    /// work.
+    /// work (messages).
     running: Arc<AtomicBool>,
-    /// Bumped on every restart so that snapshots computed against a previous
-    /// store can be detected and discarded.
-    generation: u64,
     /// Live count of items pushed through injectors for the current store,
     /// swapped together with the store on restart. Kept separate from the
     /// store so the count stays current while batches are still in flight
     /// to the worker.
     count: Arc<AtomicUsize>,
+    /// The matching behavior, needed to rebuild the indices matcher.
+    config: MatcherConfig,
     /// The last pattern passed to `find`, used to avoid notifying the worker
     /// when the pattern hasn't changed.
     last_pattern: String,
@@ -111,18 +117,25 @@ where
     /// Use [`Matcher::with_notify`] to be woken as soon as fresh results are
     /// available.
     pub fn new(sort_strategy: SortStrategy<I>, n_threads: usize) -> Self {
-        Self::with_notify(sort_strategy, n_threads, Arc::new(|| {}))
+        Self::with_notify(
+            sort_strategy,
+            MatcherConfig::default(),
+            n_threads,
+            Arc::new(|| {}),
+        )
     }
 
     /// Create a new fuzzy matcher that calls `notify` every time the background
     /// worker publishes fresh results.
     pub fn with_notify(
         sort_strategy: SortStrategy<I>,
+        config: MatcherConfig,
         n_threads: usize,
         notify: Notify,
     ) -> Self {
         Self::build(
             sort_strategy,
+            config,
             n_threads,
             notify,
             worker::INITIAL_CHUNK_SIZE,
@@ -137,16 +150,23 @@ where
         n_threads: usize,
         chunk_size: usize,
     ) -> Self {
-        Self::build(sort_strategy, n_threads, Arc::new(|| {}), chunk_size)
+        Self::build(
+            sort_strategy,
+            MatcherConfig::default(),
+            n_threads,
+            Arc::new(|| {}),
+            chunk_size,
+        )
     }
 
     fn build(
         sort_strategy: SortStrategy<I>,
+        config: MatcherConfig,
         n_threads: usize,
         notify: Notify,
         initial_chunk_size: usize,
     ) -> Self {
-        let store = Arc::new(RwLock::new(Store::default()));
+        let store = Arc::new(RwLock::new(Store::new(0)));
         let snapshot = Arc::new(Mutex::new(Arc::new(Snapshot::empty(0))));
         let running = Arc::new(AtomicBool::new(false));
         let (worker_tx, worker_rx) = mpsc::channel();
@@ -158,6 +178,7 @@ where
             notify,
             worker_rx,
             sort_strategy,
+            config,
             n_threads,
             initial_chunk_size,
         );
@@ -171,18 +192,23 @@ where
             snapshot,
             worker_tx,
             running,
-            generation: 0,
+            config,
             count: Arc::new(AtomicUsize::new(0)),
             last_pattern: String::new(),
-            indices_matcher: (String::new(), build_indices_matcher("")),
+            indices_matcher: (
+                String::new(),
+                build_indices_matcher("", config),
+            ),
         }
     }
 
     /// The cached indices matcher, rebuilt only when `pattern` changes.
     fn indices_matcher(&mut self, pattern: &str) -> &mut frizbee::Matcher {
         if self.indices_matcher.0 != pattern {
-            self.indices_matcher =
-                (pattern.to_string(), build_indices_matcher(pattern));
+            self.indices_matcher = (
+                pattern.to_string(),
+                build_indices_matcher(pattern, self.config),
+            );
         }
         &mut self.indices_matcher.1
     }
@@ -207,7 +233,7 @@ where
         Injector::new(
             self.worker_tx.clone(),
             Arc::clone(&self.running),
-            self.generation,
+            self.store.read_recursive().generation,
             Arc::clone(&self.count),
         )
     }
@@ -223,7 +249,9 @@ where
         }
         self.last_pattern = pattern.to_string();
         self.running.store(true, Ordering::Relaxed);
-        let _ = self.worker_tx.send(WorkerMsg::Pattern(pattern.to_string()));
+        let _ = self
+            .worker_tx
+            .send(WorkerMessage::NewPattern(pattern.to_string()));
     }
 
     /// Get the matched items.
@@ -261,10 +289,16 @@ where
         offset: u32,
     ) -> Vec<matched_item::MatchedItem<I>> {
         let snapshot = self.snapshot.lock().clone();
+        // Clone the store handle so the read guard borrows a local instead of
+        // `self` (the indices matcher needs `&mut self` below)
+        let store = Arc::clone(&self.store);
+        // NOTE: `read_recursive` so reads never queue behind a writer that's
+        // waiting on the worker's long-held read lock during a matcher pass
+        let store = store.read_recursive();
 
         // Discard snapshots computed against a previous store (i.e. published
         // by the worker right before a restart)
-        if snapshot.generation != self.generation {
+        if snapshot.generation != store.generation {
             return Vec::new();
         }
 
@@ -276,12 +310,6 @@ where
         // Limit to available entries
         let num_entries = num_entries.min(match_count - offset);
 
-        // Clone the store handle so the read guard borrows a local instead of
-        // `self` (the indices matcher needs `&mut self` below)
-        let store = Arc::clone(&self.store);
-        // NOTE: `read_recursive` so reads never queue behind a writer that's
-        // waiting on the worker's long-held read lock during a matcher pass
-        let store = store.read_recursive();
         let indices_matcher = self.indices_matcher(&snapshot.pattern);
 
         // PERF: Pre-allocate the results Vec so we avoid repeated reallocations
@@ -314,13 +342,12 @@ where
         index: u32,
     ) -> Option<matched_item::MatchedItem<I>> {
         let snapshot = self.snapshot.lock().clone();
-        if snapshot.generation != self.generation {
+        let store = Arc::clone(&self.store);
+        let store = store.read_recursive();
+        if snapshot.generation != store.generation {
             return None;
         }
         let m = snapshot.matches.get(index)?;
-
-        let store = Arc::clone(&self.store);
-        let store = store.read_recursive();
         let indices_matcher = self.indices_matcher(&snapshot.pattern);
         Some(matched_item(&store, indices_matcher, m.index))
     }
@@ -328,8 +355,9 @@ where
     /// The number of items matching the current pattern.
     #[allow(clippy::cast_possible_truncation)]
     pub fn matched_item_count(&self) -> u32 {
+        let generation = self.store.read_recursive().generation;
         let snapshot = self.snapshot.lock();
-        if snapshot.generation == self.generation {
+        if snapshot.generation == generation {
             snapshot.matches.len() as u32
         } else {
             0
@@ -358,42 +386,81 @@ where
     /// generation, which the worker silently discards; call `injector` again
     /// to get an injector for the fresh store.
     pub fn restart(&mut self) {
-        self.generation += 1;
-        self.store = Arc::new(RwLock::new(Store::default()));
+        let generation = self.store.read_recursive().generation + 1;
+        self.store = Arc::new(RwLock::new(Store::new(generation)));
         self.count = Arc::new(AtomicUsize::new(0));
         // Clear the published snapshot right away so stale results don't
         // linger while the worker processes the restart
-        *self.snapshot.lock() = Arc::new(Snapshot::empty(self.generation));
+        *self.snapshot.lock() = Arc::new(Snapshot::empty(generation));
         self.running.store(true, Ordering::Relaxed);
-        let _ = self.worker_tx.send(WorkerMsg::Restart {
-            store: Arc::clone(&self.store),
-            generation: self.generation,
-        });
+        let _ = self
+            .worker_tx
+            .send(WorkerMessage::Restart(Arc::clone(&self.store)));
     }
 
     /// Block until the background worker has processed all previously sent
     /// messages and finished the resulting matcher pass.
     pub fn wait_for_idle(&self) {
         let (ack_tx, ack_rx) = mpsc::channel();
-        if self.worker_tx.send(WorkerMsg::WaitForIdle(ack_tx)).is_ok() {
+        if self
+            .worker_tx
+            .send(WorkerMessage::WaitForIdle(ack_tx))
+            .is_ok()
+        {
             let _ = ack_rx.recv();
         }
     }
 
     pub fn wait_for_idle_timeout(&self, timeout: Duration) {
         let (ack_tx, ack_rx) = mpsc::channel();
-        if self.worker_tx.send(WorkerMsg::WaitForIdle(ack_tx)).is_ok() {
+        if self
+            .worker_tx
+            .send(WorkerMessage::WaitForIdle(ack_tx))
+            .is_ok()
+        {
             let _ = ack_rx.recv_timeout(timeout);
         }
     }
 }
 
 /// Build a matcher for computing match indices with the given pattern.
-fn build_indices_matcher(pattern: &str) -> frizbee::Matcher {
-    frizbee::Matcher::from_query(
-        pattern,
-        &frizbee::Config::default().casing(frizbee::CaseMatching::Smart),
+fn build_indices_matcher(
+    pattern: &str,
+    config: MatcherConfig,
+) -> frizbee::Matcher {
+    frizbee::Matcher::from_patterns(
+        &parse_patterns(pattern, config),
+        &frizbee::Config::default()
+            .matching(config.matching_mode)
+            .casing(frizbee::CaseMatching::Smart),
     )
+}
+
+/// Parse the query into pattern atoms, giving each one a typo budget when
+/// typo resistance is enabled. The budget only affects fuzzy atoms; literal
+/// atoms (`'`, `^`, `$`, `!`) always match without typos.
+fn parse_patterns(
+    pattern: &str,
+    config: MatcherConfig,
+) -> Vec<frizbee::Pattern> {
+    let patterns = frizbee::Pattern::parse_query(pattern);
+    if !config.typo_resistance {
+        return patterns;
+    }
+    patterns
+        .into_iter()
+        .map(|pattern| {
+            let budget = typo_budget(&pattern.needle);
+            pattern.max_typos(Some(budget))
+        })
+        .collect()
+}
+
+/// The typo budget for a needle: one typo per 4 characters, capped at 2 so
+/// queries stay on frizbee's specialized prefiltered code paths.
+#[allow(clippy::cast_possible_truncation)]
+fn typo_budget(needle: &str) -> u16 {
+    (needle.chars().count() / 4).min(2) as u16
 }
 
 /// Assemble a `MatchedItem` for the store entry at `index`, computing the
@@ -522,6 +589,41 @@ mod tests {
         }
 
         assert_eq!(collect_ids(&mut matcher), (0..15).collect::<Vec<_>>());
+    }
+
+    /// Typo resistance gives fuzzy needles a budget (one typo per 4 chars,
+    /// capped at 2): misspelled patterns still match, ranked below clean
+    /// matches, while short needles keep matching exactly.
+    #[test]
+    fn typo_resistance_matches_misspelled_patterns() {
+        let items: Vec<(usize, String)> =
+            vec![(0, "config".to_string()), (1, "conxig".to_string())];
+
+        let mut strict: Matcher<usize> = Matcher::new(SortStrategy::Score, 2);
+        strict.injector().push_batch(items.clone());
+        strict.find("conxig");
+        strict.wait_for_idle();
+        assert_eq!(collect_ids(&mut strict), vec![1]);
+
+        let mut tolerant: Matcher<usize> = Matcher::with_notify(
+            SortStrategy::Score,
+            MatcherConfig {
+                typo_resistance: true,
+                ..MatcherConfig::default()
+            },
+            2,
+            Arc::new(|| {}),
+        );
+        tolerant.injector().push_batch(items);
+        tolerant.find("conxig");
+        tolerant.wait_for_idle();
+        // "conxig" matches "config" with one typo, ranked below the clean match
+        assert_eq!(collect_ids(&mut tolerant), vec![1, 0]);
+
+        // Needles under 4 characters get no typo budget
+        tolerant.find("cnx");
+        tolerant.wait_for_idle();
+        assert_eq!(collect_ids(&mut tolerant), vec![1]);
     }
 
     /// A hoisted strategy backed by a fixed score table, keyed on the

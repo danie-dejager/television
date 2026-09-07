@@ -9,6 +9,7 @@ use crate::{
         ui::{BorderType, Padding, ThemeOverrides},
     },
     keymap::InputMap,
+    matcher::{MatcherConfig, MatchingMode},
     screen::layout::{InputPosition, Orientation},
     utils::shell::Shell,
 };
@@ -60,6 +61,8 @@ impl ConfigLayers {
         let autocomplete_prompt = self.channel_cli.autocomplete_prompt.clone();
         let input = self.channel_cli.input.clone();
         let exact_match = self.channel_cli.exact;
+        let typo_resistance = self.global_cli.typo_resistance
+            || self.base_config.application.typo_resistance;
         let select_1 = self.channel_cli.select_1;
         let take_1 = self.channel_cli.take_1;
         let take_1_fast = self.channel_cli.take_1_fast;
@@ -498,7 +501,7 @@ impl ConfigLayers {
 
         // Validate that all external actions referenced in channel keybindings exist
         if let Some(channel_bindings) = &self.channel.keybindings {
-            for (_, actions) in channel_bindings.bindings.iter() {
+            for actions in channel_bindings.bindings.values() {
                 for action in actions.as_slice() {
                     if let Action::ExternalAction(custom_with_prefix) = action
                         && !channel_actions.contains_key(
@@ -536,6 +539,7 @@ impl ConfigLayers {
             shell: global_shell,
             // matcher configuration
             exact_match,
+            typo_resistance,
             select_1,
             take_1,
             take_1_fast,
@@ -641,6 +645,7 @@ pub struct MergedConfig {
     pub shell: Option<Shell>,
     // matcher configuration
     pub exact_match: bool,
+    pub typo_resistance: bool,
     pub select_1: bool,
     pub take_1: bool,
     pub take_1_fast: bool,
@@ -729,6 +734,21 @@ pub struct MergedConfig {
 }
 
 impl MergedConfig {
+    /// The matching behavior: `--exact` makes bare pattern atoms match as
+    /// substrings instead of fuzzily (operators `^`, `$`, `'`, `!` keep
+    /// their meaning in both modes), and `typo_resistance` lets fuzzy atoms
+    /// tolerate typos.
+    pub fn matcher_config(&self) -> MatcherConfig {
+        MatcherConfig {
+            matching_mode: if self.exact_match {
+                MatchingMode::Substring
+            } else {
+                MatchingMode::Fuzzy
+            },
+            typo_resistance: self.typo_resistance,
+        }
+    }
+
     /// An empty input bar header means "no header line at all".
     pub fn input_bar_header_hidden(&self) -> bool {
         self.input_bar_header.as_deref().is_some_and(str::is_empty)

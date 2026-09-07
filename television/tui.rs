@@ -239,6 +239,27 @@ where
         Ok(())
     }
 
+    /// Clear the terminal and force a full redraw on the next frame.
+    ///
+    /// This is ratatui's `Terminal::clear` minus the cursor snapshot it
+    /// takes first: crossterm implements that query by writing `ESC[6n` to
+    /// stdout and waiting up to 2 seconds for the terminal's reply, which
+    /// stalls and then errors when stdout isn't connected to the terminal
+    /// (e.g. `selection=$(tv ...)`). Resizing to the current area goes
+    /// through the same clear-and-reset path without touching the cursor.
+    ///
+    /// More info: <https://github.com/crossterm-rs/crossterm/pull/957>
+    pub fn clear(&mut self) -> Result<()> {
+        let area = if let Viewport::Fixed(area) = self.viewport {
+            area
+        } else {
+            let size = self.terminal.size()?;
+            ratatui::layout::Rect::new(0, 0, size.width, size.height)
+        };
+        self.terminal.resize(area)?;
+        Ok(())
+    }
+
     pub fn enter(&mut self) -> Result<()> {
         let backend = self.terminal.backend_mut();
 
@@ -246,7 +267,7 @@ where
 
         if self.viewport == Viewport::Fullscreen {
             execute!(backend, EnterAlternateScreen)?;
-            self.terminal.clear()?;
+            self.clear()?;
         } else {
             // the minimal non-fullscreen UI has no prompt decoration; a
             // steady bar cursor marks the input position instead

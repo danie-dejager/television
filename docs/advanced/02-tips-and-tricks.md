@@ -59,10 +59,13 @@ tv files --watch 5.0  # Reload every 5 seconds
 
 ### Channel Configuration
 
+`watch` is a top-level key in the channel file, so it must come before the first table:
+
 ```toml
+watch = 2.0  # Reload every 2 seconds
+
 [source]
 command = "docker ps"
-watch = 2.0  # Reload every 2 seconds
 ```
 
 ### Use Cases
@@ -247,6 +250,10 @@ Disable fuzzy matching for exact substring search:
 tv files --exact
 ```
 
+Bare patterns then match as substrings, while the
+[search-pattern operators](../user-guide/06-search-patterns.md) (`^foo`,
+`foo$`, `!foo`, ...) keep working.
+
 ### When to Use
 
 - Better performance on very large datasets
@@ -383,7 +390,7 @@ These features compose well together:
 
 ```sh
 # Watch docker containers, inline, with fast selection
-tv docker-ps --watch 2.0 --inline --height 10
+tv docker-containers --watch 2.0 --inline --height 10
 
 # File picker with preview, expect keys for different actions
 tv files --preview-size 70 --expect "ctrl-e,ctrl-o" --ui-scale 80

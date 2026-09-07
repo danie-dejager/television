@@ -175,12 +175,13 @@ bump-version kind='patch':
 	python -m ensurepip && \
 	python -m pip install toml && \
 	python scripts/generate_cable_docs.py
-	echo "Docs generated in docs/cable_channels.md"
+	echo "Docs generated in docs/community/channels-unix.md and docs/community/channels-windows.md"
 	rm -rf .venv
 
 # Update CLI docs from tv --help
 @update-cli-help:
 	sh -ec 'help_output=$(cargo run --quiet -- --help); { \
+		printf "%s\n" "---" "title: CLI Reference" "---" ""; \
 		printf "%s\n" '\''```text'\''; \
 		printf "%s\n" "$help_output"; \
 		printf "%s\n" '\''```'\''; \
