@@ -7,11 +7,15 @@ use std::{
 use anyhow::Result;
 use crossterm::{
     cursor,
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     execute,
     terminal::{
         ClearType, EnterAlternateScreen, LeaveAlternateScreen, ScrollUp,
         disable_raw_mode, enable_raw_mode, is_raw_mode_enabled,
+        supports_keyboard_enhancement,
     },
 };
 use ratatui::{
@@ -51,6 +55,8 @@ where
 {
     pub terminal: ratatui::Terminal<CrosstermBackend<W>>,
     pub viewport: Viewport,
+    /// Whether the terminal supports the kitty keyboard protocol.
+    keyboard_enhancement: bool,
 }
 
 pub const TESTING_ENV_VAR: &str = "TV_TEST";
@@ -77,6 +83,9 @@ where
         let mut backend = CrosstermBackend::new(writer);
         let mut options = TerminalOptions::default();
         enable_raw_mode()?;
+
+        let keyboard_enhancement =
+            supports_keyboard_enhancement().unwrap_or(false);
 
         let terminal_size = backend.size()?;
         let viewport = match mode {
@@ -124,7 +133,11 @@ where
 
         options.viewport = viewport.clone();
         let terminal = Terminal::with_options(backend, options)?;
-        Ok(Self { terminal, viewport })
+        Ok(Self {
+            terminal,
+            viewport,
+            keyboard_enhancement,
+        })
     }
 
     /// Handles scrolling logic when there's insufficient space for the requested height.
@@ -273,6 +286,18 @@ where
             // steady bar cursor marks the input position instead
             execute!(backend, cursor::SetCursorStyle::SteadyBar)?;
         }
+
+        // Terminals keep separate keyboard flag stacks for the main and
+        // alternate screens, so this has to happen after entering the
+        // alternate screen (and the matching pop before leaving it).
+        if self.keyboard_enhancement {
+            execute!(
+                self.terminal.backend_mut(),
+                PushKeyboardEnhancementFlags(
+                    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                )
+            )?;
+        }
         Ok(())
     }
 
@@ -294,6 +319,11 @@ where
             )?;
 
             execute!(backend, cursor::Show)?;
+
+            if self.keyboard_enhancement {
+                execute!(backend, PopKeyboardEnhancementFlags)?;
+            }
+
             execute!(backend, DisableMouseCapture)?;
 
             if self.viewport == Viewport::Fullscreen {
