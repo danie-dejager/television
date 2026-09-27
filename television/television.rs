@@ -270,7 +270,7 @@ impl Television {
     pub fn dump_context(&self) -> Ctx {
         let channel_state = ChannelState::new(
             self.current_channel(),
-            self.channel.selected_entries().clone(),
+            self.channel.selected().clone(),
             self.channel.total_count(),
             self.channel.running(),
             self.channel.current_command().to_string(),
@@ -437,12 +437,12 @@ impl Television {
     #[must_use]
     pub fn get_selected_entries(&mut self) -> Option<FxHashSet<Entry>> {
         // if nothing is selected, return the currently hovered entry
-        if self.channel.selected_entries().is_empty() {
+        if self.channel.selected().is_empty() {
             return self
                 .get_selected_entry()
                 .map(|e| FxHashSet::from_iter([e]));
         }
-        Some(self.channel.selected_entries().clone())
+        Some(self.channel.selected_entries().into_iter().collect())
     }
 
     /// Unified cursor movement for both Channel and Remote-control pickers.
@@ -599,8 +599,8 @@ impl Television {
                     | Action::GoToNextChar
                     | Action::GoToInputStart
                     | Action::GoToInputEnd
-                    | Action::ToggleSelectionDown
-                    | Action::ToggleSelectionUp
+                    | Action::ToggleSelection
+                    | Action::ToggleSelectionAll
                     | Action::ConfirmSelection
                     | Action::SelectNextEntry
                     | Action::SelectPrevEntry
@@ -826,16 +826,17 @@ impl Television {
         }
     }
 
-    pub fn handle_toggle_selection(&mut self, action: &Action) {
-        if matches!(self.mode, Mode::Channel)
-            && let Some(entry) = &self.currently_selected
+    pub fn handle_toggle_selection(&mut self) {
+        if self.mode == Mode::Channel
+            && let Some(entry) = self.get_selected_entry()
         {
-            self.channel.toggle_selection(entry);
-            if matches!(action, Action::ToggleSelectionDown) {
-                self.move_cursor(Movement::Next, 1);
-            } else {
-                self.move_cursor(Movement::Prev, 1);
-            }
+            self.channel.toggle_selection(entry.index);
+        }
+    }
+
+    pub fn handle_toggle_selection_all(&mut self) {
+        if self.mode == Mode::Channel {
+            self.channel.toggle_selection_all();
         }
     }
 
@@ -1041,9 +1042,11 @@ impl Television {
                     self.preview_state.scroll_up(20);
                 }
             }
-
-            Action::ToggleSelectionDown | Action::ToggleSelectionUp => {
-                self.handle_toggle_selection(action);
+            Action::ToggleSelection => {
+                self.handle_toggle_selection();
+            }
+            Action::ToggleSelectionAll => {
+                self.handle_toggle_selection_all();
             }
             Action::ConfirmSelection => {
                 self.handle_confirm_selection()?;

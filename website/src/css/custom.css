@@ -9,9 +9,66 @@
   src: url("/fonts/Doto.ttf");
 }
 
+/* Ubuntu for prose, Ubuntu Mono for code and the navigation chrome */
+@font-face {
+  font-family: "Ubuntu";
+  font-weight: 300;
+  src: url("/fonts/Ubuntu-Light.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-weight: 300;
+  font-style: italic;
+  src: url("/fonts/Ubuntu-LightItalic.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  src: url("/fonts/Ubuntu-Regular.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-weight: bold;
+  src: url("/fonts/Ubuntu-Bold.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: italic;
+  src: url("/fonts/Ubuntu-Italic.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-weight: bold;
+  font-style: italic;
+  src: url("/fonts/Ubuntu-BoldItalic.ttf");
+}
+
 @font-face {
   font-family: "Ubuntu Mono";
   src: url("/fonts/UbuntuMono-Regular.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  font-weight: bold;
+  src: url("/fonts/UbuntuMono-Bold.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  font-style: italic;
+  src: url("/fonts/UbuntuMono-Italic.ttf");
+}
+
+@font-face {
+  font-family: "Ubuntu Mono";
+  font-weight: bold;
+  font-style: italic;
+  src: url("/fonts/UbuntuMono-BoldItalic.ttf");
 }
 
 /* You can override the default Infima variables here. */
@@ -29,23 +86,75 @@
   --tv-bg-deep: #1c1828;
   --tv-border: #3d3657;
   --tv-muted: #7a7aa8;
-  --tv-pink: #efa6c2;
+  --tv-accent: #fab387;
+  --tv-bright: #d3d3e6;
+  /* results-list style highlight strip, used for every hover/active row */
+  --tv-highlight: rgba(174, 174, 209, 0.1);
 
-  --ifm-font-family-base: "Ubuntu Mono", monospace;
+  --ifm-font-family-base: "Ubuntu", sans-serif;
+  /* light on dark reads heavier than it is, so prose uses the light face;
+     bold stays at 700 and the mono font has no light cut, so it is unaffected */
+  --ifm-font-weight-base: var(--ifm-font-weight-light);
+  --ifm-font-family-monospace: "Ubuntu Mono", monospace;
   --ifm-font-color-base: #aeaed1;
   --ifm-font-color-secondary: #545c8c;
-  --ifm-font-size-base: 1rem;
+  /* infima sets the root font size from this, so every rem-based size on
+     the site scales with it */
+  --ifm-font-size-base: 1.0625rem;
+  --ifm-line-height-base: 1.4;
+  /* vertical rhythm: paragraphs and code blocks get one line of margin */
+  --ifm-leading-desktop: 1;
   --ifm-code-font-size: 85%;
+  --ifm-code-padding-horizontal: 0.3rem;
   --ifm-table-border-color: var(--tv-border);
   --ifm-table-stripe-background: rgba(174, 174, 209, 0.04);
   --ifm-table-head-color: var(--ifm-color-primary-light);
   --ifm-code-background: var(--tv-bg-deep);
   --docusaurus-highlighted-code-line-bg: rgba(174, 174, 209, 0.08);
+  /* Doto is dotted at low weights and solid pixels at 900, so everything
+     set in it uses 900 */
   --ifm-heading-font-family: "Doto", sans-serif;
-  --ifm-heading-color: var(--tv-pink);
-  --ifm-menu-color-active: var(--ifm-color-primary-lightest);
-  --ifm-menu-color-background-active: var(--ifm-color-primary-darkest);
+  --ifm-heading-font-weight: 900;
+  --ifm-heading-color: var(--tv-accent);
+  --ifm-menu-color: var(--ifm-color-primary);
   --ifm-toc-link-color: var(--ifm-color-primary-dark);
+
+  /* Hover, everywhere: text goes one step lighter with no underline, row
+     like controls (menu entries, tabs, list rows) get the highlight strip,
+     bordered buttons get a stronger border. */
+  --ifm-link-hover-color: var(--ifm-color-primary-lighter);
+  --ifm-link-hover-decoration: none;
+  --ifm-navbar-link-hover-color: var(--ifm-color-primary-lighter);
+  --ifm-footer-link-hover-color: var(--ifm-color-primary-lighter);
+  --ifm-hover-overlay: var(--tv-highlight);
+}
+
+/* docusaurus defines these with a [data-theme]:root selector, so a plain
+   :root override loses on specificity */
+[data-theme="dark"]:root {
+  --docusaurus-collapse-button-bg: rgba(174, 174, 209, 0.05);
+  --docusaurus-collapse-button-bg-hover: var(--tv-highlight);
+  /* sidebar and toc scrollbars (infima ships grays) */
+  --ifm-scrollbar-track-background-color: transparent;
+  --ifm-scrollbar-thumb-background-color: var(--tv-border);
+  --ifm-scrollbar-thumb-hover-background-color: var(--ifm-color-primary-darkest);
+}
+
+/* infima only styles the webkit scrollbar, firefox reads this */
+.thin-scrollbar {
+  scrollbar-color: var(--ifm-scrollbar-thumb-background-color)
+    var(--ifm-scrollbar-track-background-color);
+}
+
+/* infima defines the base weight variable but never applies it */
+body {
+  font-weight: var(--ifm-font-weight-base);
+}
+
+/* `bolder` relative to 300 only reaches 400, so pin real bold */
+b,
+strong {
+  font-weight: var(--ifm-font-weight-bold);
 }
 
 /* Inline code */
@@ -84,6 +193,7 @@ pre code {
 
 .theme-doc-markdown table thead th {
   font-family: "Doto", sans-serif;
+  font-weight: 900;
   font-size: 0.95rem;
   text-align: left;
   border-bottom: 1px solid var(--tv-border);
@@ -98,16 +208,16 @@ pre code {
 }
 
 .theme-doc-markdown table tbody tr:hover td {
-  background-color: rgba(174, 174, 209, 0.1);
+  background-color: var(--tv-highlight);
 }
 
-/* Code blocks as tv panels: transparent background, thin border, and the
-   title (when present) floating in the border like a panel label. */
+/* Code blocks as tv panels: a slightly darker background than the page,
+   thin border, and the title (when present) floating in the border like a
+   panel label. */
 .theme-code-block {
-  --prism-background-color: transparent;
   --ifm-code-font-size: 80%;
   position: relative;
-  background-color: transparent;
+  background-color: var(--tv-bg-deep);
   border: 1px solid var(--tv-border);
   border-radius: 8px;
   box-shadow: none;
@@ -118,14 +228,40 @@ pre code {
   background-color: transparent !important;
 }
 
-/* code block title (only present on titled blocks) */
+/* tighter vertical padding inside the panel, horizontal stays at 1rem */
+.theme-code-block pre code {
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+/* copy button: same bordered-button look as the landing page. The prism
+   theme sets its background through an inline style variable, so it has
+   to be set explicitly here. */
+.theme-code-block button {
+  background: var(--tv-bg-deep);
+  border-color: var(--tv-border);
+  color: var(--tv-muted);
+}
+
+.theme-code-block button:hover {
+  border-color: var(--ifm-color-primary-darkest);
+  color: var(--ifm-color-primary-lighter);
+}
+
+/* code block title (only present on titled blocks). It sits centered on
+   the top border, so the top half covers the page and the bottom half the
+   block: the background is split to match both. */
 .theme-code-block > div:first-child:not(:last-child) {
   position: absolute;
   top: -0.8em;
   left: 0.9rem;
   max-width: calc(100% - 2rem);
   padding: 0 0.4rem;
-  background-color: var(--ifm-background-color);
+  background: linear-gradient(
+    to bottom,
+    var(--ifm-background-color) 50%,
+    var(--tv-bg-deep) 50%
+  );
   border-bottom: none;
   color: var(--tv-muted);
   font-family: "Ubuntu Mono", monospace;
@@ -170,21 +306,26 @@ pre code {
   font-family: "Doto", sans-serif;
   font-size: 1.25rem;
   font-optical-sizing: auto;
-  font-weight: 800;
+  font-weight: 900;
   font-style: normal;
   font-variation-settings:
     "ROND" 0;
+}
+
+/* infima pins the title to 700 */
+.navbar__title {
+  font-weight: 900;
+}
+
+/* anchor for the landing page links, which are centered on the navbar */
+.navbar__inner {
+  position: relative;
 }
 
 @media screen and (max-width: 576px) {
   .navbar {
     font-size: 1.1rem;
   }
-}
-
-/* the landing page has its own links, no need for the mobile drawer there */
-html.landing-page .navbar__toggle {
-  display: none;
 }
 
 /* GitHub mark icon in the navbar (mask so it follows the link color) */
@@ -228,12 +369,6 @@ html.landing-page .navbar__toggle {
   content: "GitHub";
 }
 
-@media (min-width: 997px) {
-  .navbar-item-mobile-only {
-    display: none;
-  }
-}
-
 .footer {
   background-color: var(--ifm-background-color);
   color: var(--ifm-font-color-base);
@@ -265,7 +400,6 @@ nav.menu {
 .navbar-sidebar .navbar__title {
   font-family: "Doto", sans-serif;
   font-size: 1.25rem;
-  font-weight: 800;
 }
 
 .navbar-sidebar .menu {
@@ -278,6 +412,10 @@ nav.menu {
   border-bottom: 1px solid var(--tv-border);
   color: var(--tv-muted);
   font-size: 0.85rem;
+}
+
+.navbar-sidebar__back:hover {
+  color: var(--ifm-color-primary-lighter);
 }
 
 /* categories: bold and brighter; doc entries stay regular */
@@ -310,9 +448,19 @@ nav.menu {
   --ifm-menu-color-background-active: rgba(174, 174, 209, 0.12);
 }
 
+.menu__link:hover {
+  color: var(--ifm-color-primary-lighter);
+}
+
+/* desktop collapse / expand sidebar buttons */
+[class*="collapseSidebarButton"]:hover,
+[class*="expandButton"]:hover {
+  color: var(--ifm-color-primary-lighter);
+}
+
 .menu__link:not(.menu__link--sublist)::before {
   content: "❯\00a0";
-  color: var(--tv-pink);
+  color: var(--tv-accent);
   visibility: hidden;
 }
 
@@ -321,7 +469,11 @@ nav.menu {
 }
 
 .table-of-contents__left-border {
-  border-left: 1px solid var(--ifm-color-primary-darkest);
+  border-left: none;
+}
+
+.table-of-contents,
+[class*="tocCollapsibleButton"] {
   font-family: "Ubuntu Mono", monospace;
 }
 
@@ -334,11 +486,40 @@ main .container {
   padding-top: 1.2rem !important;
 }
 
+/* Docs layout spans the whole width instead of a centered 1320px box: the
+   content column keeps the width it had in that box (75% of 1320px) and the
+   toc sticks to the right edge. */
+[class*="docMainContainer"] > .container {
+  max-width: none;
+}
+
+@media (min-width: 997px) {
+  /* docusaurus caps the column with an !important max-width from inside a
+     cascade layer, which beats any !important written here, so size it
+     through its flex basis instead (the 75% cap still applies on narrower
+     screens) */
+  [class*="docItemCol"] {
+    flex: 0 1 990px;
+  }
+
+  [class*="docMainContainer"] .row > .col--3 {
+    margin-left: auto;
+  }
+}
+
+.table-of-contents__link:hover {
+  color: var(--ifm-color-primary-lighter);
+}
+
 .table-of-contents__link--active {
-  color: var(--tv-pink);
+  color: var(--tv-accent);
 }
 
 /* Breadcrumbs: plain mono path, no pill backgrounds */
+.breadcrumbs {
+  font-family: "Ubuntu Mono", monospace;
+}
+
 .breadcrumbs__link {
   background: none !important;
   padding: 0.2rem 0.3rem;
@@ -346,8 +527,17 @@ main .container {
   color: var(--tv-muted);
 }
 
+.breadcrumbs__link:hover {
+  color: var(--ifm-color-primary-lighter);
+}
+
 .breadcrumbs__item--active .breadcrumbs__link {
   color: var(--ifm-color-primary-light);
+}
+
+/* heading anchor links: muted `#`, lighter on hover like any other link */
+.hash-link {
+  color: var(--tv-muted);
 }
 
 /* Headings: compact, tight rhythm, and markdown-style level markers so
@@ -379,102 +569,12 @@ main .container {
 }
 
 .theme-doc-markdown a {
-  color: var(--tv-pink);
+  color: var(--tv-accent);
 }
 
 .theme-doc-markdown a:hover {
   color: var(--ifm-color-primary-lighter);
   text-decoration: none;
-}
-
-/* Generated category index pages, styled like tv's results panel: one
-   bordered panel with its label in the border, plain mono entries inside,
-   and the selection pointer + highlight strip on hover. */
-[class*="generatedIndexPage"] article section.row {
-  margin: 0;
-}
-
-/* undo the stacked default gap above the card list (infima's utility is
-   !important inside the docusaurus.infima layer) */
-@layer docusaurus.infima {
-  [class*="generatedIndexPage"] article.margin-top--lg {
-    margin-top: 1rem !important;
-  }
-}
-
-/* single column, like a real results list */
-article[class*="docCardListItem"] {
-  --ifm-col-width: 100%;
-  margin-bottom: 0 !important;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.theme-doc-card-container {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 1.25rem;
-  background-color: transparent;
-  border: none;
-  border-radius: 4px;
-  box-shadow: none;
-  transition: background-color 0.15s ease;
-}
-
-.theme-doc-card-container:hover {
-  background-color: rgba(174, 174, 209, 0.12);
-  box-shadow: none;
-}
-
-.theme-doc-card-icon {
-  display: none;
-}
-
-.theme-doc-card-heading {
-  margin: 0;
-  font-family: "Ubuntu Mono", monospace;
-  font-size: 0.85rem;
-  font-weight: normal;
-  line-height: 1.5;
-  letter-spacing: 0;
-  color: var(--ifm-color-primary);
-}
-
-.theme-doc-card-heading::before {
-  content: "❯\00a0";
-  color: var(--tv-pink);
-  visibility: hidden;
-}
-
-.theme-doc-card-container:hover .theme-doc-card-heading {
-  color: var(--ifm-color-primary-lighter);
-}
-
-.theme-doc-card-container:hover .theme-doc-card-heading::before {
-  visibility: visible;
-}
-
-.theme-doc-card-heading {
-  flex: 0 0 16rem;
-  min-width: 0;
-}
-
-.theme-doc-card-description {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--tv-muted);
-}
-
-/* infima's `.padding--lg` is `!important` inside the docusaurus.infima cascade
-   layer, which beats any unlayered override — so this one lives in the same
-   layer and wins on specificity instead */
-@layer docusaurus.infima {
-  .card.theme-doc-card-container {
-    padding: 0.1rem 0.6rem !important;
-  }
 }
 
 /* Pagination nav: plain pager-style links above a thin rule */
@@ -514,9 +614,29 @@ article[class*="docCardListItem"] {
 }
 
 .pagination-nav__link:hover {
-  background-color: rgba(174, 174, 209, 0.1);
+  background-color: var(--tv-highlight);
 }
 
 .pagination-nav__link:hover .pagination-nav__label {
   color: var(--ifm-color-primary-lighter);
+}
+
+/* Back-to-top button: a small bordered panel instead of infima's gray disc */
+[class*="backToTopButton"] {
+  background-color: var(--tv-bg-deep);
+  border: 1px solid var(--tv-border);
+  box-shadow: none;
+}
+
+[class*="backToTopButton"]::after {
+  background-color: var(--tv-muted);
+}
+
+[class*="backToTopButton"]:hover {
+  background-color: var(--tv-bg-deep);
+  border-color: var(--ifm-color-primary-darkest);
+}
+
+[class*="backToTopButton"]:hover::after {
+  background-color: var(--ifm-color-primary-lighter);
 }
