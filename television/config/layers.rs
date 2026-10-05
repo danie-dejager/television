@@ -169,8 +169,17 @@ impl ConfigLayers {
                     None
                 },
             );
-        let channel_preview_cached = self.channel_cli.cache_preview
-            || self.channel.preview.as_ref().is_some_and(|p| p.cached);
+        let channel_preview_cached =
+            // cli takes precedence
+            if let Some(c) = self.channel_cli.cache_preview {
+                c
+            // then channel config
+            } else if let Some(preview) = &self.channel.preview {
+                preview.cached
+            // default to true
+            } else {
+                true
+            };
 
         // Channel > base config fields
         let remote_show_channel_descriptions = self
@@ -763,7 +772,12 @@ impl MergedConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::channels::prototypes::UiSpec;
+    use crate::{
+        cable::Cable,
+        channels::prototypes::UiSpec,
+        cli::{args::Cli, post_process},
+    };
+    use clap::Parser;
 
     fn merge_layers(
         config: Config,
@@ -780,6 +794,94 @@ mod tests {
             },
         )
         .merge()
+    }
+
+    fn preview_cache_prototype(setting: &str) -> ChannelPrototype {
+        toml::from_str(&format!(
+            r#"
+            [metadata]
+            name = "test"
+            [source]
+            command = "echo entry"
+            [preview]
+            command = "echo preview"
+            {setting}
+            "#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn preview_cache_respects_channel_config_and_explicit_cli_override() {
+        for (setting, flags, expected) in [
+            ("", &[][..], true),
+            ("cached = true", &[], true),
+            ("cached = false", &[], false),
+            ("cached = false", &["--cache-preview"], true),
+            ("", &["--no-cache-preview"], false),
+            ("cached = true", &["--no-cache-preview"], false),
+        ] {
+            let prototype = preview_cache_prototype(setting);
+            let cable = Cable::from_prototypes(vec![prototype.clone()]);
+            let args = ["tv", "test"].iter().chain(flags);
+            let cli = post_process(
+                Cli::try_parse_from(args).unwrap(),
+                false,
+                &cable,
+            );
+            let merged =
+                ConfigLayers::new(Config::default(), prototype, cli).merge();
+            assert_eq!(
+                merged.channel_preview_cached, expected,
+                "{setting:?}, {flags:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn preview_cache_defaults_to_enabled_for_adhoc_preview() {
+        for (flags, expected) in
+            [(&[][..], true), (&["--no-cache-preview"], false)]
+        {
+            let args = [
+                "tv",
+                "--source-command",
+                "echo entry",
+                "--preview-command",
+                "echo preview",
+            ]
+            .iter()
+            .chain(flags);
+            let cli = post_process(
+                Cli::try_parse_from(args).unwrap(),
+                false,
+                &Cable::default(),
+            );
+            let merged = ConfigLayers::new(
+                Config::default(),
+                ChannelPrototype::new("test", "echo entry"),
+                cli,
+            )
+            .merge();
+            assert_eq!(merged.channel_preview_cached, expected, "{flags:?}");
+        }
+    }
+
+    #[test]
+    fn preview_cache_cli_override_does_not_carry_over_channel_switch() {
+        let prototype = preview_cache_prototype("cached = true");
+        let cable = Cable::from_prototypes(vec![prototype.clone()]);
+        let cli = post_process(
+            Cli::try_parse_from(["tv", "test", "--no-cache-preview"]).unwrap(),
+            false,
+            &cable,
+        );
+        let mut layers =
+            ConfigLayers::new(Config::default(), prototype.clone(), cli);
+        assert!(!layers.merge().channel_preview_cached);
+
+        layers.update_channel(prototype);
+        assert!(layers.merge().channel_preview_cached);
     }
 
     #[test]

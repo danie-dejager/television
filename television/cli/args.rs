@@ -164,23 +164,32 @@ pub struct Cli {
     )]
     pub preview_footer: Option<String>,
 
-    /// Whether to cache the preview command output for each entry.
+    /// Enable caching of the preview command output for each entry.
     ///
     /// This can be useful when the preview command is expensive to run
     /// and you want to avoid running it multiple times for the same entry.
     ///
     /// This is enabled by default since most channels will benefit from it.
     ///
-    /// This can be disabled for special cases e.g. where the preview command output changes
-    /// frequently and/or you want live udpates.
+    /// Passing this flag overrides the current channel's settings.
     #[arg(
         long,
-        default_value = "true",
         verbatim_doc_comment,
-        conflicts_with = "no_preview",
+        conflicts_with_all = ["no_cache_preview", "no_preview"],
         help_heading = "Preview"
     )]
     pub cache_preview: bool,
+
+    /// Disable caching of the preview command output for each entry.
+    ///
+    /// See `--cache-preview` for more information.
+    #[arg(
+        long,
+        verbatim_doc_comment,
+        conflicts_with_all = ["cache_preview", "no_preview"],
+        help_heading = "Preview"
+    )]
+    pub no_cache_preview: bool,
 
     /// A preview line number offset template to use to scroll the preview to for each
     /// entry.
