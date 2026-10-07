@@ -22,7 +22,7 @@ display = "{split:\\t:1}"
 output = "{split:\\t:0}"
 
 [keybindings]
-enter = "actions:focus"
+shift-enter = "actions:focus"
 ctrl-x = [ "actions:close", "reload_source",]
 
 [actions.focus]
@@ -209,7 +209,7 @@ command = "grep '\\[profile' ~/.aws/config 2>/dev/null | sed 's/\\[profile //' |
 command = "aws configure list --profile '{}' 2>/dev/null"
 
 [keybindings]
-enter = "actions:export"
+shift-enter = "actions:export"
 
 [ui.preview_panel]
 size = 40
@@ -320,7 +320,7 @@ command = "cargo {} --help 2>/dev/null | head -50"
 layout = "portrait"
 
 [keybindings]
-enter = "actions:run"
+shift-enter = "actions:run"
 
 [ui.preview_panel]
 size = 60
@@ -507,7 +507,7 @@ output = "{split:\t:0}"
 command = "df -h '{split:\t:0}' && echo && ls -la '{split:\t:0}' 2>/dev/null | head -20"
 
 [keybindings]
-enter = "actions:cd"
+shift-enter = "actions:cd"
 ctrl-o = "actions:open"
 ctrl-i = "actions:info"
 ctrl-d = "actions:eject"
@@ -901,7 +901,7 @@ command = "fd -t f . $HOME/.config"
 command = "bat -n --color=always '{}'"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 
 [actions.edit]
 description = "Edit the selected dotfile"
@@ -935,7 +935,7 @@ command = "fd -t f . ~/Downloads 2>/dev/null | head -200"
 command = "bat -n --color=always '{}' 2>/dev/null || file '{}'"
 
 [keybindings]
-enter = "actions:open"
+shift-enter = "actions:open"
 ctrl-d = "actions:delete"
 ctrl-m = "actions:move"
 
@@ -1401,7 +1401,7 @@ output = "{split: :0}"
 command = "git show -p --stat --pretty=fuller --color=always '{0}'"
 
 [keybindings]
-enter = "actions:checkout"
+shift-enter = "actions:checkout"
 ctrl-d = "actions:delete"
 ctrl-m = "actions:merge"
 ctrl-r = "actions:rebase"
@@ -1453,7 +1453,7 @@ command = "git log --diff-filter=D --summary | rg 'delete mode \\d+' -r '' --tri
 command = [ "git show \"$(git rev-list -n1 HEAD -- '{}')^:{}\" | bat -n --color always --file-name '{}'", "git show --summary \"$(git rev-list -n1 HEAD -- '{}')\"",]
 
 [keybindings]
-enter = "actions:print_commit"
+shift-enter = "actions:print_commit"
 ctrl-r = "actions:restore_file"
 
 [actions.print_commit]
@@ -1709,7 +1709,7 @@ display = "{split:/:-1}"
 command = "cd '{}'; git log -n 200 --pretty=medium --all --graph --color"
 
 [keybindings]
-enter = "actions:cd"
+shift-enter = "actions:cd"
 ctrl-e = "actions:edit"
 
 [actions.cd]
@@ -1756,7 +1756,7 @@ command = "git stash show -p --color=always '{strip_ansi|split:\\::0}'"
 layout = "portrait"
 
 [keybindings]
-enter = "actions:apply"
+shift-enter = "actions:apply"
 ctrl-p = "actions:pop"
 ctrl-d = "actions:drop"
 
@@ -1838,7 +1838,7 @@ frecency = false
 command = "git show --color=always '{}'"
 
 [keybindings]
-enter = "actions:checkout"
+shift-enter = "actions:checkout"
 ctrl-d = "actions:delete"
 
 [actions.checkout]
@@ -1877,7 +1877,7 @@ command = "git worktree list --porcelain | grep '^worktree' | cut -d' ' -f2-"
 command = "cd '{}' && git log --oneline -10 --color=always && echo && git status --short"
 
 [keybindings]
-enter = "actions:cd"
+shift-enter = "actions:cd"
 ctrl-d = "actions:remove"
 
 [actions.cd]
@@ -1916,7 +1916,7 @@ command = "gradle tasks --all -q 2>/dev/null | grep -E '^[a-zA-Z]' | awk '{print
 command = "gradle help --task '{}' -q 2>/dev/null || echo 'Task: {}'"
 
 [keybindings]
-enter = "actions:run"
+shift-enter = "actions:run"
 
 [actions.run]
 description = "Run the selected Gradle task"
@@ -1991,7 +1991,7 @@ run = "fd -t f -e png -e jpg -e jpeg -e gif -e webp -e bmp -e svg -H ."
 command = "chafa -s 80x40 '{}' 2>/dev/null || file '{}'"
 
 [keybindings]
-enter = "actions:open"
+shift-enter = "actions:open"
 
 [actions.open]
 description = "Open the selected image with default viewer"
@@ -2026,7 +2026,7 @@ output = "{split:\t:0}"
 command = "jj log --color=always --no-graph -r '{split:\t:0}'"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 ctrl-d = "actions:delete"
 ctrl-s = "actions:set"
 ctrl-f = "actions:forget"
@@ -2186,7 +2186,7 @@ frecency = false
 command = "jj show --color=always '{strip_ansi|split:\t:0}'"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 ctrl-i = "actions:insert_before"
 ctrl-a = "actions:insert_after"
 ctrl-shift-d = "actions:diff"
@@ -2350,7 +2350,7 @@ output = "{split:\t:0}"
 command = "cd '{split:\t:1}' && jj log --color=always --no-graph -r '::@' --ignore-working-copy -T 'change_id.shortest(8) ++ \"\\t\" ++ description.first_line() ++ \"\\n\"'"
 
 [keybindings]
-enter = "actions:cd"
+shift-enter = "actions:cd"
 ctrl-d = "actions:forget"
 
 [actions.cd]
@@ -2467,7 +2467,7 @@ command = "kubectl config view --minify --context='{}' -o yaml"
 layout = "portrait"
 
 [keybindings]
-enter = "actions:use"
+shift-enter = "actions:use"
 ctrl-d = "actions:delete"
 
 [actions.use]
@@ -2761,7 +2761,7 @@ command = "make -pRrq 2>/dev/null | awk -F: '/^[a-zA-Z0-9][^$#\\/\\t=]*:([^=]|$)
 command = "awk '/^{}[[:space:]]*:/{found=1} found{print; if(/^[^\\t]/ && NR>1 && !/^{}[[:space:]]*:/) exit}' Makefile"
 
 [keybindings]
-enter = "actions:run"
+shift-enter = "actions:run"
 
 [actions.run]
 description = "Run the selected make target"
@@ -2795,7 +2795,7 @@ command = "apropos ."
 command = "man '{0}'"
 
 [keybindings]
-enter = "actions:open"
+shift-enter = "actions:open"
 
 [ui]
 layout = "portrait"
@@ -2838,7 +2838,7 @@ display = "{split: :0}"
 command = "df -h '{}' && echo && ls -la '{}' 2>/dev/null | head -20"
 
 [keybindings]
-enter = "actions:cd"
+shift-enter = "actions:cd"
 
 [actions.cd]
 description = "Open a shell in the selected mount point"
@@ -2943,7 +2943,7 @@ display = "{split:\\t:0}"
 command = "jq -r '.scripts[\"{split:\\t:0}\"]' package.json"
 
 [keybindings]
-enter = "actions:run"
+shift-enter = "actions:run"
 
 [ui.preview_panel]
 size = 30
@@ -3004,7 +3004,7 @@ display = "{regex_extract:.*\\.config/nvim/(.*):1}"
 command = "bat -n --color=always '{}'"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 
 [preview.env]
 BAT_THEME = "ansi"
@@ -3048,7 +3048,7 @@ layout = "landscape"
 
 [keybindings]
 shortcut = "f4"
-enter = "actions:resume"
+shift-enter = "actions:resume"
 ctrl-d = "actions:delete"
 
 [ui.preview_panel]
@@ -3167,7 +3167,7 @@ command = "pdftotext -l 2 -layout '{}' - 2>/dev/null | head -100 || file '{}'"
 layout = "portrait"
 
 [keybindings]
-enter = "actions:open"
+shift-enter = "actions:open"
 
 [actions.open]
 description = "Open the selected PDF with default viewer"
@@ -3568,7 +3568,7 @@ run = "find . -type f -mmin -60 -not -path '*/.*' 2>/dev/null | head -100"
 command = "bat -n --color=always '{}'"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 
 [preview.env]
 BAT_THEME = "ansi"
@@ -3663,7 +3663,7 @@ run = "fd -H -d 2 -t d -E .Trash . ~"
 command = "sesh preview '{strip_ansi|split: :1..|join: }'"
 
 [keybindings]
-enter = "actions:connect"
+shift-enter = "actions:connect"
 ctrl-d = [ "actions:kill_session", "reload_source",]
 
 [actions.connect]
@@ -3843,7 +3843,7 @@ command = "grep -E '^Host(name)? ' $HOME/.ssh/config | tr -s ' ' | cut -d' ' -f2
 command = "awk '/^Host / { found=0 } /^Host (.*[[:space:]])?'{}'([[:space:]].*)?$/ { found=1 } found' $HOME/.ssh/config"
 
 [keybindings]
-enter = "actions:connect"
+shift-enter = "actions:connect"
 
 [actions.connect]
 description = "SSH into the selected host"
@@ -3943,7 +3943,7 @@ command = "tailscale exit-node list | awk '/^[[:space:]]*[0-9]+\\./ {gsub(/^[[:s
 command = "tailscale whois {}"
 
 [keybindings]
-enter = "actions:connect"
+shift-enter = "actions:connect"
 
 [actions.connect]
 description = "Set selected host as exit node"
@@ -4066,7 +4066,7 @@ command = "bat -n --color=always '{strip_ansi|split:\\::0}'"
 offset = "{strip_ansi|split:\\::1}"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 
 [preview.env]
 BAT_THEME = "ansi"
@@ -4220,7 +4220,7 @@ command = "bat -n --color=always --highlight-line '{strip_ansi|split:\\::1}' '{s
 offset = "{strip_ansi|split:\\::1}"
 
 [keybindings]
-enter = "actions:edit"
+shift-enter = "actions:edit"
 
 [preview.env]
 BAT_THEME = "ansi"
@@ -4384,7 +4384,7 @@ frecency = false
 command = "ls -la --color=always '{}'"
 
 [keybindings]
-enter = "actions:cd"
+shift-enter = "actions:cd"
 ctrl-d = "actions:remove"
 
 [actions.cd]
